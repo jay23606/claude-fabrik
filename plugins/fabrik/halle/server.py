@@ -5,8 +5,10 @@ Bindet nur an 127.0.0.1 und liest ausschließlich: Lager, Sitzungsdateien
 und unter ~/.claude/projects die Projektordner sowie das Ende einzelner
 Transkripte (für die Infokarte einer Sitzung und den Projektnamen von Sitzungen
 im Benutzer- oder Temp-Ordner; dafür wird bei geschriebenen Dateien auch nach
-einem .git-Ordner und im Lager nach status.json geschaut). Einzige schreibende Aktion: Prüfer in den Einstellungen (einstellungen.json)
-an- oder abschalten (POST /api/rolle, nur vom eigenen Ursprung).
+einem .git-Ordner und im Lager nach status.json geschaut). Schreibende Aktionen,
+nur vom eigenen Ursprung und nur in die Einstellungen (einstellungen.json):
+Prüfer an- oder abschalten (POST /api/rolle) sowie Modell und Effort eines
+Arbeiters wählen (POST /api/arbeiter).
 
 Nach außen geht nur die Update-Abfrage (neuestes Release auf GitHub), im
 Hintergrund und höchstens alle 6 Stunden; sie pflegt update.json im Datenordner.
@@ -28,6 +30,7 @@ from pathlib import Path
 HIER = Path(__file__).resolve().parent
 sys.path.insert(0, str(HIER))
 import update  # noqa: E402 - liegt neben dieser Datei
+import arbeiter  # noqa: E402 - liegt neben dieser Datei
 # Lager und Datenordner gibt das Werkzeug fabrik beim Start mit.
 LAGER = Path(os.environ.get("FABRIK_LAGER", Path.home() / "Claude-Fabrik"))
 DATEN = Path(os.environ.get("FABRIK_DATEN", Path.home() / ".claude/fabrik"))
@@ -436,18 +439,20 @@ def rollen_aus():
 
 
 def setze_rolle(rolle, aktiv):
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        d = {}
-    aus = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR and r != rolle]
-    if not aktiv:
-        aus.append(rolle)
-    d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
-    tmp = EINSTELLUNGEN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-    os.replace(tmp, EINSTELLUNGEN)
+    # Gleiche Sperre wie beim Speichern von Modell und Effort, damit sich beide nicht überschreiben.
+    with arbeiter._sperre(DATEN):
+        d = arbeiter._lies_alles(DATEN)
+        aus = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR and r != rolle]
+        if not aktiv:
+            aus.append(rolle)
+        d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
+        arbeiter._schreibe_alles(DATEN, d)
     return d["deaktiviert"]
+
+
+def arbeiter_stand():
+    """Modell und Effort je Arbeiter samt Auswahl für die Halle. Liest die Einstellungen bei jeder Abfrage neu."""
+    return {"stand": arbeiter.stand(DATEN), **arbeiter.auswahl()}
 
 
 def wach_aktiv():
@@ -533,6 +538,7 @@ class Halle(BaseHTTPRequestHandler):
         if pfad == "/api/stand":
             return self.json({"auftraege": auftraege(), "sitzungen": sitzungen(), "wach": wach_aktiv(),
                               "rollen_aus": rollen_aus(), "schaltbar": SCHALTBAR,
+                              "arbeiter": arbeiter_stand(),
                               "lager": str(LAGER), "zeit": datetime.now(timezone.utc).isoformat()})
         if pfad == "/api/update":
             return self.json(update_stand())
@@ -548,7 +554,7 @@ class Halle(BaseHTTPRequestHandler):
 
 
     def do_POST(self):
-        # Einzige schreibende Aktion: einen Prüfer an- oder abschalten.
+        # Schreibende Aktionen: Prüfer an- oder abschalten, Modell und Effort eines Arbeiters wählen.
         # Schutz vor fremden Webseiten: lokale Adresse, gleicher Ursprung, eigener Header und JSON.
         host = self.headers.get("Host", "")
         if host.split(":")[0] not in ("127.0.0.1", "localhost"):
@@ -557,17 +563,36 @@ class Halle(BaseHTTPRequestHandler):
         if self.headers.get("Origin") not in erlaubt or self.headers.get("X-Fabrik-Halle") != "1" \
                 or not (self.headers.get("Content-Type") or "").startswith("application/json"):
             return self.senden(403, "Nicht erlaubt", "text/plain; charset=utf-8")
-        if self.path.split("?")[0] != "/api/rolle":
+        pfad = self.path.split("?")[0]
+        if pfad not in ("/api/rolle", "/api/arbeiter"):
             return self.senden(404, "Nicht gefunden", "text/plain; charset=utf-8")
         try:
             laenge = min(int(self.headers.get("Content-Length") or 0), 1024)
             daten = json.loads(self.rfile.read(laenge) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self.json({"fehler": "ungültig"}, 400)
+        if not isinstance(daten, dict):
+            return self.json({"fehler": "ungültig"}, 400)
+        if pfad == "/api/arbeiter":
+            return self.arbeiter_setzen(daten)
         rolle, aktiv = daten.get("rolle"), daten.get("aktiv")
         if rolle not in SCHALTBAR or not isinstance(aktiv, bool):
             return self.json({"fehler": "ungültig"}, 400)
-        return self.json({"rollen_aus": setze_rolle(rolle, aktiv)})
+        try:
+            return self.json({"rollen_aus": setze_rolle(rolle, aktiv)})
+        except OSError:
+            return self.json({"fehler": "Einstellung konnte nicht gespeichert werden"}, 500)
+
+    def arbeiter_setzen(self, daten):
+        """Erwartet {"rolle": …, "feld": "modell"|"effort", "wert": …}; "standard" setzt zurück."""
+        rolle, feld, wert = daten.get("rolle"), daten.get("feld"), daten.get("wert")
+        try:
+            stand = arbeiter.setze(DATEN, rolle, feld, wert)
+        except arbeiter.Ungueltig as e:
+            return self.json({"fehler": str(e)}, 400)
+        except OSError:
+            return self.json({"fehler": "Einstellung konnte nicht gespeichert werden"}, 500)
+        return self.json({"rolle": rolle, "stand": stand})
 
 
 class LokalerServer(ThreadingHTTPServer):

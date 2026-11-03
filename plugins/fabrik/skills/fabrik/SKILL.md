@@ -14,6 +14,8 @@ Argument: `$ARGUMENTS`
 
 Die Arbeiter gehören zum Plugin und heißen deshalb `fabrik:<name>`, also z. B. `subagent_type: "fabrik:fabrik-spec"`. Kennt das Agent-Werkzeug einen Namen nicht, nimm ihn ohne Präfix (`fabrik-spec`).
 
+**Modell und Effort der Arbeiter:** Der Nutzer wählt sie in der Halle (Klick auf einen Arbeiter) oder mit `fabrik arbeiter <rolle> modell|effort <wert>`. Lies **unmittelbar vor jedem Start eines Arbeiters** (auch vor jeder Prüfrunde und jeder Nachbesserung) `fabrik modelle`. Unter `aufruf.<rolle>` stehen die Parameter für genau diesen Arbeiter, z. B. `{"model": "sonnet", "effort": "high"}`. Gib jeden dort stehenden Wert unverändert als gleichnamigen Parameter des Agent-Aufrufs mit (`model`, `effort`). Das ist eine ausdrückliche Vorgabe des Nutzers. Ist `aufruf.<rolle>` leer oder fehlt ein Wert, lässt du den Parameter weg; dann gilt der Standard aus der Agent-Definition. Kennt das Agent-Werkzeug `effort` nicht, lässt du nur diesen Parameter weg und sagst es dem Nutzer einmal. Wähle nie selbst ein Modell oder einen Effort.
+
 ## 0. Argument auswerten
 
 Zuerst: `fabrik einstellung`. Steht dort `"eingerichtet": false`, führe **Abschnitt E** aus und mach danach mit dem Argument weiter.
@@ -38,7 +40,7 @@ Frag den Nutzer mit AskUserQuestion in **einer** Runde:
 Dann setzen, nur was der Nutzer angegeben hat:
 `fabrik einstellung lager "<Ordner>"`, `fabrik einstellung git_name "<Name>"`, `fabrik einstellung git_email "<E-Mail>"`, `fabrik einstellung autor "<Name>"`, bei Autostart `fabrik autostart an`. Zum Schluss `fabrik einstellung eingerichtet` und eine Zeile Bestätigung.
 
-Prüfer lassen sich jederzeit in der Halle per Klick oder mit `fabrik rolle <rolle> an|aus` schalten.
+Prüfer lassen sich jederzeit in der Halle (Klick auf den Arbeiter) oder mit `fabrik rolle <rolle> an|aus` schalten. Dort und mit `fabrik arbeiter <rolle> modell|effort <wert>` stellt der Nutzer auch Modell und Effort jedes Arbeiters ein.
 
 ## H. Halle sicherstellen
 
@@ -59,7 +61,7 @@ Prüfer lassen sich jederzeit in der Halle per Klick oder mit `fabrik rolle <rol
 ## 2. Spec
 
 1. `fabrik station <ID> spec`
-2. Starte den Arbeiter `fabrik:fabrik-spec` mit dem Agent-Werkzeug (`subagent_type: "fabrik:fabrik-spec"`), Prompt:
+2. Starte den Arbeiter `fabrik:fabrik-spec` mit dem Agent-Werkzeug (`subagent_type: "fabrik:fabrik-spec"`, dazu `model`/`effort` aus `fabrik modelle`, siehe oben), Prompt:
    `Auftrag <ID>. Projektpfad: <PFAD>. Wunsch des Nutzers: <Wunsch wörtlich>`
 3. Lies danach `fabrik zeige <ID>`. Sind `hat_ui` oder `kriterien` leer, schick den Spec-Arbeiter einmal mit einem konkreten Hinweis zurück.
 4. Melde dem Nutzer in 2 bis 3 Zeilen das Ziel, die Zahl der Abnahmekriterien, „Oberfläche ja/nein“ und ob das Projekt sensibel ist.
@@ -67,14 +69,14 @@ Prüfer lassen sich jederzeit in der Halle per Klick oder mit `fabrik rolle <rol
 ## 3. Erster Bau
 
 1. `fabrik station <ID> bau`
-2. Starte `fabrik:fabrik-builder`, Prompt: `Auftrag <ID>. Projektpfad: <PFAD>. Runde 0: erster Bau nach .fabrik/spec.md.`
+2. Starte `fabrik:fabrik-builder` (mit `model`/`effort` aus `fabrik modelle`), Prompt: `Auftrag <ID>. Projektpfad: <PFAD>. Runde 0: erster Bau nach .fabrik/spec.md.`
 
 ## 4. Prüfrunden (höchstens `max_runden`, normal 3)
 
 Für Runde `r = 1, 2, 3`:
 
 1. `fabrik runde <ID> <r>` und `fabrik station <ID> pruefung`
-2. Lies `fabrik rollen`. Prüfer, die dort unter `deaktiviert` stehen, startest du **nicht**. Der Nutzer schaltet sie in der Halle per Klick oder mit `fabrik rolle <rolle> an|aus`. Starte die übrigen Prüfer **parallel in einer einzigen Nachricht** (mehrere Agent-Aufrufe gleichzeitig):
+2. Lies `fabrik rollen`. Prüfer, die dort unter `deaktiviert` stehen, startest du **nicht**. Der Nutzer schaltet sie in der Halle per Klick oder mit `fabrik rolle <rolle> an|aus`. Lies `fabrik modelle`. Starte die übrigen Prüfer **parallel in einer einzigen Nachricht** (mehrere Agent-Aufrufe gleichzeitig), jeden mit seinen Parametern aus `aufruf.<rolle>`:
    - `fabrik:fabrik-sicherheit`, `fabrik:fabrik-inspector`, `fabrik:fabrik-bediener`, soweit aktiv
    - zusätzlich `fabrik:fabrik-designer`, wenn er aktiv ist **und** `hat_ui` true ist
    Prompt für jeden: `Auftrag <ID>. Projektpfad: <PFAD>. Prüfrunde <r>.`
@@ -91,7 +93,7 @@ Für Runde `r = 1, 2, 3`:
 ## 5. Freigabe
 
 1. `fabrik station <ID> freigabe`
-2. Starte `fabrik:fabrik-approver`, Prompt: `Auftrag <ID>. Projektpfad: <PFAD>. Letzte Prüfrunde: <r>. Abgeschaltete Prüfer: <Liste aus fabrik rollen oder „keine“>.`
+2. Starte `fabrik:fabrik-approver` (mit `model`/`effort` aus `fabrik modelle`), Prompt: `Auftrag <ID>. Projektpfad: <PFAD>. Letzte Prüfrunde: <r>. Abgeschaltete Prüfer: <Liste aus fabrik rollen oder „keine“>.`
 3. Lies `fabrik zeige <ID>` und `<PFAD>/.fabrik/freigabe.md`.
 4. Prüfe zur Sicherheit: `fabrik setze <ID> 'aktive_arbeiter=[]'`
 4a. Bei **freigegeben** hakst du in `<PFAD>/roadmap.md` die Features ab, die diese Version umsetzt (`- [x]`).
@@ -116,6 +118,7 @@ Lies `fabrik zeige <ID>` und die Pfadangabe. Räum hängengebliebene Arbeiter au
 - Abgeschaltete Prüfer (`fabrik rollen`) laufen nicht, auch nicht „ausnahmsweise“. Wenn ihre Prüfung wichtig wäre, etwa der Bediener bei neuen Abnahmekriterien, sag es dem Nutzer und überlass ihm das Einschalten. Ist der Bediener aus, prüft niemand die Abnahmekriterien: Gib in Zwischenstand und Abschlussbericht „Kriterien nicht geprüft (Bediener aus)“ an.
 - Halte den Stand immer über `fabrik` aktuell, bevor ein Arbeiter startet. Die Halle zeigt nur, was dort steht.
 - Gib jedem Arbeiter ID, Pfad und Runde mit. Mehr brauchen sie nicht, alles andere steht in `.fabrik/` und im Projektordner.
+- Jeder Agent-Aufruf eines Arbeiters bekommt `model` und `effort` aus dem frisch gelesenen `fabrik modelle`, soweit dort gesetzt. Gilt auch für Neustarts nach einem Fehler.
 - **Drei Dateien im Projektwurzelordner, in jedem Projekt, für alle Arbeiter sichtbar:**
   - `todos.md` sammelt alle Aufgaben, die während einer Prüfung oder eines Gesprächs mit dem Nutzer aufkommen, als `- [ ] <Text>`. Aufgaben aus dem Gespräch trägst du sofort ein, bevor du weitermachst.
   - `roadmap.md` zeigt alle Phasen des Projekts und welche Features zu welcher Phase gehören. Der Spec-Arbeiter legt sie an, du hakst die fertigen Features ab.

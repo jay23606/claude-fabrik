@@ -10,14 +10,26 @@ const FUSS_Y = 625;
 const OPUS = "#f2b632";
 const SONNET = "#4fa8e0";
 
+// Farbe von Helm und Beschriftung je Modell, Anzugfarbe und Kürzel auf der Brust.
+const MODELL_STIL = {
+  fable:  { name: "Fable",  farbe: "#c9a2ff", anzug: "#5a467e", kuerzel: "F" },
+  opus:   { name: "Opus",   farbe: OPUS,      anzug: "#3c5a86", kuerzel: "O" },
+  sonnet: { name: "Sonnet", farbe: SONNET,    anzug: "#365f5a", kuerzel: "S" },
+  haiku:  { name: "Haiku",  farbe: "#6fdc9a", anzug: "#3f6146", kuerzel: "H" },
+};
+const OHNE_MODELL = { name: "wie Sitzung", farbe: "#c3c9d6", anzug: "#4b5366", kuerzel: "?" };
+const EFFORT_NAME = { low: "niedrig", medium: "mittel", high: "hoch", xhigh: "sehr hoch", max: "max" };
+// Kurzform für die Beschriftung am Band, dort ist wenig Platz.
+const EFFORT_KURZ = { low: "niedrig", medium: "mittel", high: "hoch", xhigh: "x-hoch", max: "max" };
+
 const ROLLEN = {
-  spec:       { name: "Spec",       modell: "Opus",   helm: OPUS,   x: 250,  werkzeug: "stift",   ruhig: true },
-  builder:    { name: "Builder",    modell: "Opus",   helm: OPUS,   x: 530,  werkzeug: "hammer" },
-  sicherheit: { name: "Sicherheit", modell: "Opus",   helm: OPUS,   x: 760,  werkzeug: "schild",  ruhig: true },
-  designer:   { name: "Designer",   modell: "Sonnet", helm: SONNET, x: 860,  werkzeug: "pinsel" },
-  inspector:  { name: "Code",       modell: "Sonnet", helm: SONNET, x: 960,  werkzeug: "lupe",    ruhig: true },
-  bediener:   { name: "Bediener",   modell: "Sonnet", helm: SONNET, x: 1060, werkzeug: "brett" },
-  approver:   { name: "Approver",   modell: "Opus",   helm: OPUS,   x: 1150, werkzeug: "stempel", ruhig: true },
+  spec:       { name: "Spec",       titel: "Spec",       x: 250,  werkzeug: "stift",   ruhig: true },
+  builder:    { name: "Builder",    titel: "Builder",    x: 530,  werkzeug: "hammer" },
+  sicherheit: { name: "Sicherheit", titel: "Sicherheit", x: 760,  werkzeug: "schild",  ruhig: true },
+  designer:   { name: "Designer",   titel: "Designer",   x: 860,  werkzeug: "pinsel" },
+  inspector:  { name: "Code",       titel: "Inspector (Code)", x: 960, werkzeug: "lupe", ruhig: true },
+  bediener:   { name: "Bediener",   titel: "Bediener",   x: 1060, werkzeug: "brett" },
+  approver:   { name: "Approver",   titel: "Approver",   x: 1150, werkzeug: "stempel", ruhig: true },
 };
 
 const STATIONEN = {
@@ -38,6 +50,7 @@ const zustand = {
   offeneKarte: null,
   ausloeser: null,       // Element, das die Infokarte geöffnet hat
   rollenAus: [],
+  arbeiter: null,        // Modell und Effort je Rolle samt Auswahl, aus /api/stand
 };
 
 const $ = (id) => document.getElementById(id);
@@ -135,7 +148,7 @@ function zeichneSzene() {
   </g>
 
   <!-- Sperrzone -->
-  <g transform="translate(1150 684)">
+  <g transform="translate(1200 684)">
     <rect width="200" height="86" fill="url(#p-sperre)" opacity=".9"/>
     <rect x="8" y="8" width="184" height="70" fill="#2b303c"/>
     <text x="100" y="72" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif" font-weight="800" font-size="10" letter-spacing="1" fill="#f2c94c" fill-opacity=".8">SPERRZONE · MENSCH GEFRAGT</text>
@@ -221,8 +234,10 @@ function zeichneSzene() {
   for (const [rolle, r] of Object.entries(ROLLEN)) {
     el("text", { x: r.x, y: BAND_Y + 44, "text-anchor": "middle", "font-size": 10, "font-weight": 800, "letter-spacing": 1,
       fill: "#c3c9d6", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, bandSchilder).textContent = r.name.toUpperCase();
-    el("text", { x: r.x, y: BAND_Y + 57, "text-anchor": "middle", "font-size": 10,
-      fill: r.helm, "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, bandSchilder).textContent = r.modell;
+    el("text", { id: `band-modell-${rolle}`, class: "band-modell", x: r.x, y: BAND_Y + 59, "text-anchor": "middle", "font-size": 12,
+      "font-weight": 700, fill: OHNE_MODELL.farbe, "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, bandSchilder);
+    el("text", { id: `band-effort-${rolle}`, class: "band-modell", x: r.x, y: BAND_Y + 74, "text-anchor": "middle", "font-size": 12,
+      fill: "#c3c9d6", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, bandSchilder);
   }
 
   zeichneTafel();
@@ -252,10 +267,10 @@ function zeichneTafel() {
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setzeFilter(schluessel); } });
   }
   el("text", { id: "tafel-zeile", x: 24, y: 212, class: "kreide", "font-size": 16, "fill-opacity": ".85" }, t);
-  el("circle", { cx: 540, cy: 228, r: 6, fill: OPUS }, t);
-  el("text", { x: 550, y: 233, class: "kreide", "font-size": 13 }, t).textContent = "Opus";
-  el("circle", { cx: 592, cy: 228, r: 6, fill: SONNET }, t);
-  el("text", { x: 602, y: 233, class: "kreide", "font-size": 13 }, t).textContent = "Sonnet";
+  for (const [cx, m] of [[380, "fable"], [440, "opus"], [498, "sonnet"], [568, "haiku"]]) {
+    el("circle", { cx, cy: 228, r: 6, fill: MODELL_STIL[m].farbe }, t);
+    el("text", { x: cx + 10, y: 233, class: "kreide", "font-size": 13 }, t).textContent = MODELL_STIL[m].name;
+  }
   // Spalte mit den laufenden Paketen und ihrer Gesamtlaufzeit
   el("rect", { x: 480, y: 66, width: 156, height: 118, rx: 10, fill: "none", stroke: "#f1efe6", "stroke-opacity": ".18" }, t);
   el("text", { x: 558, y: 92, class: "kreide", "font-size": 18, "text-anchor": "middle" }, t).textContent = "Laufzeit";
@@ -302,24 +317,24 @@ function werkzeug(g, art) {
 function zeichneArbeiter(eltern, rolle, r) {
   const g = el("g", { class: `arbeiter${r.ruhig ? " ruhig" : ""}`, id: `w-${rolle}`, transform: `translate(${r.x} ${FUSS_Y})` }, eltern);
   const k = el("g", { class: "koerper" }, g);
-  const anzug = r.modell === "Opus" ? "#3c5a86" : "#365f5a";
+  const anzug = OHNE_MODELL.anzug;
   el("rect", { x: -13, y: -44, width: 11, height: 44, rx: 3, fill: "#26324a" }, k);
   el("rect", { x: 2, y: -44, width: 11, height: 44, rx: 3, fill: "#26324a" }, k);
-  el("rect", { x: -26, y: -84, width: 9, height: 34, rx: 4, fill: anzug }, k);
-  el("rect", { x: -18, y: -88, width: 36, height: 50, rx: 9, fill: anzug }, k);
+  el("rect", { class: "anzug", x: -26, y: -84, width: 9, height: 34, rx: 4, fill: anzug }, k);
+  el("rect", { class: "anzug", x: -18, y: -88, width: 36, height: 50, rx: 9, fill: anzug }, k);
   el("rect", { x: -10, y: -80, width: 20, height: 16, rx: 3, fill: "#ffffff", "fill-opacity": ".18" }, k);
-  el("text", { x: 0, y: -68, "text-anchor": "middle", "font-size": 10, "font-weight": 800, fill: "#fff", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, k)
-    .textContent = r.modell[0];
+  el("text", { class: "brust", x: 0, y: -68, "text-anchor": "middle", "font-size": 10, "font-weight": 800, fill: "#fff", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, k)
+    .textContent = OHNE_MODELL.kuerzel;
   el("circle", { cx: 0, cy: -101, r: 13, fill: "#f0c9a0" }, k);
   el("circle", { cx: -4, cy: -101, r: 1.6, fill: "#2a2a2a" }, k);
   el("circle", { cx: 5, cy: -101, r: 1.6, fill: "#2a2a2a" }, k);
   el("path", { d: "M-3 -95 Q1 -92 5 -95", stroke: "#2a2a2a", "stroke-width": 1.4, fill: "none" }, k);
-  el("path", { class: "helm", d: "M-15 -104 A15 14 0 0 1 15 -104 Z", fill: r.helm }, k);
-  el("rect", { class: "helm", x: -18, y: -106, width: 36, height: 5, rx: 2.5, fill: r.helm }, k);
+  el("path", { class: "helm", d: "M-15 -104 A15 14 0 0 1 15 -104 Z", fill: OHNE_MODELL.farbe }, k);
+  el("rect", { class: "helm", x: -18, y: -106, width: 36, height: 5, rx: 2.5, fill: OHNE_MODELL.farbe }, k);
   el("rect", { x: -2, y: -117, width: 4, height: 12, rx: 2, fill: "#ffffff", "fill-opacity": ".35" }, k);
   const schulter = el("g", { transform: "translate(20 -84)" }, k);
   const arm = el("g", { class: "arm" }, schulter);
-  el("rect", { x: -4.5, y: 0, width: 9, height: 34, rx: 4.5, fill: anzug }, arm);
+  el("rect", { class: "anzug", x: -4.5, y: 0, width: 9, height: 34, rx: 4.5, fill: anzug }, arm);
   werkzeug(arm, r.werkzeug);
   el("circle", { cx: 0, cy: 34, r: 5, fill: "#f0c9a0" }, arm);
 
@@ -339,57 +354,99 @@ function zeichneArbeiter(eltern, rolle, r) {
   el("text", { x: 0, y: 2, "text-anchor": "middle", "font-size": 11, "font-weight": 700, fill: "#d9deea", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, aus)
     .textContent = "abgeschaltet";
 
-  if (SCHALTBAR.includes(rolle)) {
-    // Unsichtbare Fläche, damit der ganze Arbeiter anklickbar ist.
-    el("rect", { class: "arbeiter-flaeche", x: -32, y: -125, width: 64, height: 128, rx: 8, fill: "transparent" }, g);
-    g.classList.add("schaltbar");
-    g.setAttribute("tabindex", "0");
-    g.setAttribute("role", "switch");
-    g.addEventListener("click", () => schalteRolle(rolle));
-    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); schalteRolle(rolle); } });
-    g.addEventListener("mouseenter", (e) => zeigeTooltipText(e, rollenInfo(rolle)));
-    g.addEventListener("mousemove", bewegeTooltip);
-    g.addEventListener("mouseleave", versteckeTooltip);
-    g.addEventListener("focus", (e) => zeigeTooltipText(e, rollenInfo(rolle)));
-    g.addEventListener("blur", versteckeTooltip);
-  }
+  // Jeder Arbeiter ist anklickbar: öffnet seine Einstellungen (Modell, Effort, bei Prüfern an/aus).
+  // Unsichtbare Fläche, damit der ganze Arbeiter eine große Trefferfläche hat.
+  el("rect", { class: "arbeiter-flaeche", x: -32, y: -125, width: 64, height: 128, rx: 8, fill: "transparent" }, g);
+  g.classList.add("klickbar");
+  if (SCHALTBAR.includes(rolle)) g.classList.add("schaltbar");
+  g.setAttribute("tabindex", "0");
+  g.setAttribute("role", "button");
+  g.setAttribute("aria-haspopup", "dialog");
+  g.addEventListener("click", () => oeffneArbeiter(rolle));
+  g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); oeffneArbeiter(rolle); } });
+  g.addEventListener("mouseenter", (e) => zeigeTooltipText(e, rollenInfo(rolle)));
+  g.addEventListener("mousemove", bewegeTooltip);
+  g.addEventListener("mouseleave", versteckeTooltip);
+  g.addEventListener("focus", (e) => zeigeTooltipText(e, rollenInfo(rolle)));
+  g.addEventListener("blur", versteckeTooltip);
 }
 
 const SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"];
 
+// Was beim nächsten Start dieser Rolle gilt: Modell und Effort samt Herkunft.
+function arbeiterStand(rolle) {
+  return zustand.arbeiter?.stand?.[rolle] || null;
+}
+
+function modellStil(modell) {
+  return MODELL_STIL[modell] || OHNE_MODELL;
+}
+
+function einsatzText(rolle) {
+  const st = arbeiterStand(rolle);
+  if (!st) return "Einstellung unbekannt";
+  const modell = modellStil(st.gilt_modell).name;
+  const effort = st.gilt_effort ? EFFORT_NAME[st.gilt_effort] || st.gilt_effort : "Standard";
+  return `${modell}, Effort ${effort}`;
+}
+
 function rollenInfo(rolle) {
-  const aus = zustand.rollenAus.includes(rolle);
-  return { titel: `${ROLLEN[rolle].name} · ${aus ? "abgeschaltet" : "aktiv"}`,
-    zeilen: [aus ? "Wird in Prüfrunden übersprungen." : "Prüft in jeder Runde mit.", `Klicken zum ${aus ? "Einschalten" : "Abschalten"}`] };
+  const zeilen = [einsatzText(rolle)];
+  if (SCHALTBAR.includes(rolle)) {
+    const aus = zustand.rollenAus.includes(rolle);
+    zeilen.push(aus ? "Abgeschaltet, wird in Prüfrunden übersprungen." : "Prüft in jeder Runde mit.");
+  }
+  zeilen.push("Klicken für Modell und Effort");
+  return { titel: ROLLEN[rolle].titel, zeilen };
 }
 
 function zeigeRollen() {
-  for (const rolle of SCHALTBAR) {
+  for (const rolle of Object.keys(ROLLEN)) {
     const g = $(`w-${rolle}`);
     if (!g) continue;
-    const aus = zustand.rollenAus.includes(rolle);
+    const aus = SCHALTBAR.includes(rolle) && zustand.rollenAus.includes(rolle);
     g.classList.toggle("aus", aus);
-    g.setAttribute("aria-checked", String(!aus));
-    g.setAttribute("aria-label", `${ROLLEN[rolle].name}: ${aus ? "abgeschaltet" : "aktiv"}. Umschalten`);
+    const st = arbeiterStand(rolle);
+    const stil = modellStil(st?.gilt_modell);
+    for (const helm of g.querySelectorAll(".helm")) helm.setAttribute("fill", stil.farbe);
+    for (const anzug of g.querySelectorAll(".anzug")) anzug.setAttribute("fill", stil.anzug);
+    g.querySelector(".brust").textContent = stil.kuerzel;
+    const band = $(`band-modell-${rolle}`);
+    if (band) {
+      band.setAttribute("fill", stil.farbe);
+      band.textContent = stil.name;
+    }
+    const effort = $(`band-effort-${rolle}`);
+    if (effort) effort.textContent = `Effort ${st?.gilt_effort ? EFFORT_KURZ[st.gilt_effort] || st.gilt_effort : "Std."}`;
+    g.setAttribute("aria-label", `${ROLLEN[rolle].titel}: ${einsatzText(rolle)}${aus ? ", abgeschaltet" : ""}. Einstellungen öffnen`);
   }
+}
+
+function oeffneArbeiter(rolle) { return oeffneKarte("A:" + rolle); }
+
+async function sende(pfad, daten) {
+  let r;
+  try {
+    r = await fetch(pfad, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Fabrik-Halle": "1" },
+      body: JSON.stringify(daten),
+    });
+  } catch {
+    throw new Error("Keine Verbindung zur Halle.");
+  }
+  let antwort = null;
+  try { antwort = await r.json(); } catch {}
+  if (!r.ok) throw new Error(antwort?.fehler || `Fehler ${r.status}`);
+  return antwort;
 }
 
 async function schalteRolle(rolle) {
   const aktiv = zustand.rollenAus.includes(rolle);
-  try {
-    const r = await fetch("/api/rolle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Fabrik-Halle": "1" },
-      body: JSON.stringify({ rolle, aktiv }),
-    });
-    if (!r.ok) throw new Error(r.status);
-    zustand.rollenAus = (await r.json()).rollen_aus;
-    zeigeRollen();
-    const g = $(`w-${rolle}`);
-    if (g && g.matches(":hover, :focus")) zeigeTooltipText({ target: g, type: "focus" }, rollenInfo(rolle));
-  } catch {
-    $("verbindung").hidden = false;
-  }
+  const d = await sende("/api/rolle", { rolle, aktiv });
+  zustand.rollenAus = d.rollen_aus;
+  zeigeRollen();
+  return aktiv;
 }
 
 // --- Werkstücke --------------------------------------------------------------
@@ -443,7 +500,7 @@ function berechneZiele(auftraege) {
       ziele.set(a.id, { x, y, s: 1 });
     });
   }
-  eskaliert.forEach((a, i) => ziele.set(a.id, { x: 1192 + (i % 3) * 58, y: 744 - Math.floor(i / 3) * 52, s: 1 }));
+  eskaliert.forEach((a, i) => ziele.set(a.id, { x: 1242 + (i % 3) * 58, y: 744 - Math.floor(i / 3) * 52, s: 1 }));
   abgebrochen.slice(-4).forEach((a, i) => ziele.set(a.id, { x: 76 + (i % 2) * 48, y: 730 - Math.floor(i / 2) * 32, s: 0.62 }));
   fertig.sort((x, y) => String(y.aktualisiert).localeCompare(String(x.aktualisiert)));
   fertig.slice(0, 12).forEach((a, i) => {
@@ -881,7 +938,114 @@ function rendereSitzung(d) {
   zustand.karteGerendert = "S:" + d.id;
 }
 
+// --- Einstellungen eines Arbeiters ----------------------------------------------
+
+function optionen(liste, gewaehlt) {
+  return liste.map(([wert, text]) => `<option value="${esc(wert)}"${wert === gewaehlt ? " selected" : ""}>${esc(text)}</option>`).join("");
+}
+
+function rendereArbeiter(rolle) {
+  const st = arbeiterStand(rolle);
+  const auswahl = zustand.arbeiter;
+  const inhalt = $("karte-inhalt");
+  // Nur neu zeichnen, wenn sich etwas geändert hat, sonst springt der Fokus aus der Auswahl.
+  const signatur = JSON.stringify([rolle, st, zustand.rollenAus.includes(rolle), Boolean(auswahl)]);
+  if (zustand.karteGerendert === "A:" + rolle && zustand.arbeiterSignatur === signatur) return;
+  const fokusId = inhalt.contains(document.activeElement) ? document.activeElement.id : null;
+  // Die Meldung bleibt dasselbe Element, damit Screenreader neue Texte darin ansagen.
+  const meldung = zustand.karteGerendert === "A:" + rolle ? $("a-meldung") : null;
+  zustand.arbeiterSignatur = signatur;
+
+  $("karte-id").textContent = ROLLEN[rolle].titel;
+  $("karte-titel").textContent = "Modell und Effort";
+  $("karte-kopieren").hidden = true;
+  if (!st || !auswahl) {
+    inhalt.innerHTML = `<p class="fehler" role="alert">✗ Die Einstellungen der Arbeiter konnten nicht geladen werden.</p>`;
+    zustand.karteGerendert = "A:" + rolle;
+    return;
+  }
+  const stdModell = st.standard_modell ? modellStil(st.standard_modell).name : "wie die Sitzung";
+  const stdEffort = st.standard_effort ? EFFORT_NAME[st.standard_effort] : "wie die Agent-Definition";
+  const modelle = [["standard", `Standard (${stdModell})`], ...auswahl.modelle.map((m) => [m.wert, m.name])];
+  const erlaubt = auswahl.modelle.find((m) => m.wert === st.gilt_modell)?.efforts || auswahl.efforts.map((e) => e.wert);
+  const efforts = [["standard", `Standard (${stdEffort})`],
+    ...auswahl.efforts.filter((e) => erlaubt.includes(e.wert)).map((e) => [e.wert, `${e.name} (${e.wert})`])];
+
+  let h = `<p>Beim nächsten Start arbeitet ${esc(ROLLEN[rolle].titel)} mit <b id="a-gilt">${esc(einsatzText(rolle))}</b>.</p>
+    <div class="feld">
+      <label for="a-modell">Modell</label>
+      <select id="a-modell" data-feld="modell" data-rolle="${esc(rolle)}">${optionen(modelle, st.modell || "standard")}</select>
+    </div>
+    <div class="feld">
+      <label for="a-effort">Effort</label>
+      <select id="a-effort" data-feld="effort" data-rolle="${esc(rolle)}" aria-describedby="a-effort-hilfe">${optionen(efforts, st.effort || "standard")}</select>
+      <p class="hilfe" id="a-effort-hilfe">Wie gründlich der Arbeiter nachdenkt. Höher heißt gründlicher, aber langsamer und teurer.</p>
+    </div>`;
+  if (SCHALTBAR.includes(rolle)) {
+    const an = !zustand.rollenAus.includes(rolle);
+    h += `<div class="feld">
+      <span class="feld-titel" id="a-pruefer-titel">Prüfer</span>
+      <button type="button" id="a-pruefer" class="schalter${an ? " an" : ""}" role="switch" aria-checked="${an}" aria-labelledby="a-pruefer-titel a-pruefer-text">
+        <span class="schalter-knopf" aria-hidden="true"></span><span id="a-pruefer-text">${an ? "An: prüft in jeder Runde mit" : "Aus: wird übersprungen"}</span>
+      </button>
+    </div>`;
+  }
+  h += meldung ? `<p id="a-meldung-platz"></p>` : `<p class="meldung" id="a-meldung" role="status" aria-live="polite"></p>`;
+  h += `<h3>Gespeichert</h3><p class="leer">Die Auswahl liegt in <code>~/.claude/fabrik/einstellungen.json</code> und bleibt bei Updates erhalten. „Standard“ nimmt den Wert aus der Agent-Definition.</p>
+    <h3>Im Terminal</h3>
+    ${befehlsKnopf(`fabrik arbeiter ${rolle} modell ${st.modell || "standard"}`, `fabrik arbeiter ${rolle} modell ${st.modell || "standard"}`)}
+    ${befehlsKnopf(`fabrik arbeiter ${rolle} effort ${st.effort || "standard"}`, `fabrik arbeiter ${rolle} effort ${st.effort || "standard"}`)}`;
+  inhalt.innerHTML = h;
+  if (meldung) $("a-meldung-platz").replaceWith(meldung);
+  zustand.karteGerendert = "A:" + rolle;
+  if (fokusId && $(fokusId)) $(fokusId).focus();
+}
+
+function zeigeMeldung(text, fehler) {
+  const m = $("a-meldung");
+  if (!m) return;
+  m.classList.toggle("fehler", Boolean(fehler));
+  m.classList.toggle("ok", !fehler);
+  m.textContent = (fehler ? "✗ " : "✓ ") + text;
+}
+
+async function speichereArbeiter(auswahlFeld) {
+  const { rolle, feld } = auswahlFeld.dataset;
+  const vorher = arbeiterStand(rolle)?.[feld] || "standard";
+  const wert = auswahlFeld.value;
+  auswahlFeld.setAttribute("aria-busy", "true");
+  try {
+    const d = await sende("/api/arbeiter", { rolle, feld, wert });
+    zustand.arbeiter.stand[rolle] = d.stand;
+    zeigeRollen();
+    rendereArbeiter(rolle);
+    zeigeMeldung(`Gespeichert. ${ROLLEN[rolle].titel} startet künftig mit ${einsatzText(rolle)}.`, false);
+  } catch (fehler) {
+    auswahlFeld.value = vorher;
+    zeigeMeldung(`Nicht gespeichert: ${fehler.message}`, true);
+  } finally {
+    auswahlFeld.removeAttribute("aria-busy");
+  }
+}
+
+async function schalteRolleInKarte(knopf) {
+  const rolle = zustand.offeneKarte?.slice(2);
+  if (!rolle) return;
+  try {
+    const jetztAn = await schalteRolle(rolle);
+    rendereArbeiter(rolle);
+    zeigeMeldung(`Gespeichert. ${ROLLEN[rolle].titel} ist ${jetztAn ? "eingeschaltet" : "abgeschaltet"}.`, false);
+  } catch (fehler) {
+    zeigeMeldung(`Nicht gespeichert: ${fehler.message}`, true);
+    knopf.focus();
+  }
+}
+
 async function ladeKarte(id) {
+  if (id.startsWith("A:")) {
+    if (!ROLLEN[id.slice(2)]) throw new Error("Rolle unbekannt");
+    return rendereArbeiter(id.slice(2));
+  }
   if (id.startsWith("S:")) {
     const r = await fetch(`/api/sitzung/${encodeURIComponent(id.slice(2))}`);
     if (!r.ok) throw new Error("Sitzung nicht gefunden");
@@ -921,6 +1085,7 @@ async function oeffneKarte(id) {
   const ausloeser = warOffen ? zustand.ausloeser : merkeAusloeser();
   zustand.offeneKarte = id;
   zustand.karteGerendert = null;
+  zustand.arbeiterSignatur = null;
   try { await ladeKarte(id); } catch { if (!warOffen) zustand.offeneKarte = null; return; }
   zustand.ausloeser = ausloeser;
   const karte = $("karte");
@@ -974,6 +1139,7 @@ async function abfragen() {
     aktualisierePakete(d.auftraege);
     aktualisiereArbeiter(d.auftraege);
     zustand.rollenAus = d.rollen_aus || [];
+    zustand.arbeiter = d.arbeiter || null;
     zeigeRollen();
     aktualisiereTafel(d.auftraege, d.sitzungen, d.wach);
     aktualisiereWerkbaenke(d.sitzungen);
@@ -1044,6 +1210,11 @@ $("werkstatt-kopf").addEventListener("keydown", (e) => { if (e.key === "Enter" |
 $("karte-inhalt").addEventListener("click", (e) => {
   const knopf = e.target.closest("button[data-befehl]");
   if (knopf) kopiere({ currentTarget: knopf });
+  const schalter = e.target.closest("#a-pruefer");
+  if (schalter) schalteRolleInKarte(schalter);
+});
+$("karte-inhalt").addEventListener("change", (e) => {
+  if (e.target.matches("select[data-feld]")) speichereArbeiter(e.target);
 });
 $("karte-zu").addEventListener("click", schliesseKarte);
 $("schleier").addEventListener("click", schliesseKarte);

@@ -66,7 +66,11 @@ fabrik einstellung lager ~/Projekte/Fabrik
 fabrik einstellung git_name "Max Muster"
 fabrik einstellung git_email "max@example.org"
 fabrik einstellung autor "Max Muster"
-fabrik rolle designer aus              # Prüfer ab- oder anschalten (auch per Klick in der Halle)
+fabrik rolle designer aus              # Prüfer ab- oder anschalten (auch in der Halle, Klick auf den Arbeiter)
+fabrik arbeiter builder modell sonnet  # Modell eines Arbeiters: fable, opus, sonnet, haiku oder standard
+fabrik arbeiter builder effort high    # Effort: low, medium, high, xhigh, max oder standard (auch niedrig, mittel, hoch)
+fabrik arbeiter builder                # Modell und Effort eines Arbeiters anzeigen
+fabrik modelle                         # Modell und Effort aller Arbeiter (JSON)
 fabrik autostart an|aus                # Anmeldedienst (macOS)
 fabrik einstellung update_hinweis aus  # Hinweis auf neue Versionen abschalten
 fabrik update                          # installierte und neueste Version (JSON)
@@ -74,7 +78,13 @@ fabrik update                          # installierte und neueste Version (JSON)
 
 Einstellungen und Laufzeitdateien liegen in `~/.claude/fabrik/` (änderbar über die Umgebungsvariable `FABRIK_DATEN`), also außerhalb des Plugins. Updates lassen sie unberührt. Das Lager lässt sich auch mit `FABRIK_LAGER` überschreiben.
 
-Die Arbeiter laufen mit diesen Modellen: Spec, Builder, Sicherheit und Approver mit Opus; Inspector, Bediener und Designer mit Sonnet.
+## Modell und Effort der Arbeiter
+
+Standardmäßig laufen Spec, Builder, Sicherheit und Approver mit Opus, Inspector, Bediener und Designer mit Sonnet (so steht es in den Agent-Definitionen unter `plugins/fabrik/agents/`).
+
+Das lässt sich pro Arbeiter ändern: In der Halle auf einen Arbeiter klicken (oder ihn mit Tab ansteuern und Enter drücken) und Modell und Effort wählen. Gespeichert wird sofort, die Halle bestätigt es oder nennt den Grund, warum es nicht ging. Am Band steht unter jedem Arbeiter, womit er startet. Ohne Halle geht dasselbe mit `fabrik arbeiter <rolle> modell|effort <wert>`; `standard` stellt den Wert aus der Agent-Definition wieder her.
+
+Die Auswahl liegt in `~/.claude/fabrik/einstellungen.json` und übersteht Updates. `/fabrik` liest sie vor jedem Start eines Arbeiters und gibt `model` und `effort` beim Aufruf mit.
 
 ## Updates
 
@@ -117,7 +127,7 @@ Zum Ausprobieren ohne Installation: `claude --plugin-dir ./plugins/fabrik`
 python3 -m unittest discover -s tests
 ```
 
-Die Tests prüfen, wie die Halle Sitzungen im Benutzer- oder Temp-Ordner benennt, und den Update-Hinweis (Versionsvergleich, Zwischenspeicher, Fehlerfall ohne Netz, Abschalten). Sie nutzen kein Netz und brauchen nur Python 3.9 oder neuer.
+Die Tests prüfen, wie die Halle Sitzungen im Benutzer- oder Temp-Ordner benennt, Modell und Effort der Arbeiter (Speichern, Standard, Kommandozeile, Halle) und den Update-Hinweis (Versionsvergleich, Zwischenspeicher, Fehlerfall ohne Netz, Abschalten). Sie nutzen kein Netz und brauchen nur Python 3.9 oder neuer.
 
 ## Lizenz
 

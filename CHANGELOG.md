@@ -1,5 +1,27 @@
 # Änderungen
 
+## Version 4 – 2026-11-03
+
+Fabrik-Version 4 des Auftrags F-0004, entspricht Plugin-Version 0.4.0.
+
+### Hinzugefügt
+- In der Halle lassen sich Modell und Effort jedes Arbeiters per Klick oder Tastatur wählen, und die Auswahl steht am Band unter jedem Arbeiter.
+- Auf der Kommandozeile setzen `fabrik arbeiter <rolle> modell|effort <wert>` und `fabrik modelle` dieselben Einstellungen.
+- `/fabrik` gibt das gewählte Modell und den Effort bei jedem Start eines Arbeiters mit.
+
+### Geändert
+- Der Schalter zum An- und Abschalten der Prüfer sitzt jetzt in der Einstellungskarte des Arbeiters, und die Sperrzone der Halle ist etwas nach rechts gerückt.
+- Prüfer-Schalter und Modellwahl schreiben die Einstellungsdatei unter einer gemeinsamen Sperre.
+
+## 0.4.0 – 2026-11-03
+
+- Modell und Effort je Arbeiter wählbar. In der Halle öffnet ein Klick (oder Enter/Leertaste) auf einen Arbeiter seine Einstellungen: Modell (Fable, Opus, Sonnet, Haiku oder Standard) und Effort (niedrig, mittel, hoch, sehr hoch, max oder Standard). Bei Prüfern sitzt dort auch der Schalter zum An- und Abschalten, der bisher direkt am Klick hing.
+- Am Band steht unter jedem Arbeiter, mit welchem Modell und Effort er startet; Helm- und Anzugfarbe folgen dem Modell. Speichern wird bestätigt, Fehler werden mit Grund angezeigt.
+- Kommandozeile: `fabrik arbeiter <rolle> modell <wert>`, `fabrik arbeiter <rolle> effort <wert>` (`standard` setzt zurück), `fabrik arbeiter <rolle>` zeigt den Stand, `fabrik modelle` liefert alles als JSON.
+- Die Auswahl liegt in `~/.claude/fabrik/einstellungen.json` und übersteht Updates. Ohne eigene Wahl gilt der Standard aus der Agent-Definition.
+- `/fabrik` liest vor jedem Start eines Arbeiters `fabrik modelle` und gibt `model` und `effort` beim Agent-Aufruf mit.
+- Die Sperrzone in der Halle sitzt etwas weiter rechts, damit die Beschriftung des Approvers frei bleibt.
+
 ## 0.3.1 – 2026-10-30
 
 - Neue Datei `changelog.md` in jedem Projekt im Projektwurzelordner: eine Historie, was in welcher Version hinzugefügt, geändert, behoben oder entfernt wurde. Neueste Version oben.

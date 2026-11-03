@@ -289,7 +289,53 @@ def cmd_runde(a):
     ereignis(pfad, "runde", f"Runde {a.runde} beginnt")
 
 
+def arbeiter_modul():
+    sys.path.insert(0, str(WERK / "halle"))
+    import arbeiter
+    return arbeiter
+
+
+def zeige_arbeiter(rolle, st):
+    am = arbeiter_modul()
+    modell = am.MODELL_NAMEN.get(st["gilt_modell"], st["gilt_modell"] or "wie die Sitzung")
+    effort = am.EFFORT_NAMEN.get(st["gilt_effort"], st["gilt_effort"]) if st["gilt_effort"] else "Standard"
+    herkunft = lambda eigen: "eigene Wahl" if eigen else "Standard"
+    print(f"{rolle}: Modell {modell} ({herkunft(st['modell'])}), Effort {effort} ({herkunft(st['effort'])})")
+
+
 def cmd_arbeiter(a):
+    """`arbeiter <ID> <rolle> start|ende` meldet Arbeiter; `arbeiter <rolle> [modell|effort <wert>]` stellt sie ein."""
+    t = a.teile
+    if ID_MUSTER.match(t[0]):
+        if len(t) != 3 or t[2] not in ("start", "ende"):
+            fehler("Aufruf: fabrik arbeiter <ID> <rolle> start|ende")
+        a.id, a.rolle, a.aktion = t
+        return arbeiter_melden(a)
+    am = arbeiter_modul()
+    rolle = t[0]
+    if rolle not in ROLLEN:
+        fehler(f"Rolle muss eine von {', '.join(ROLLEN)} sein (oder zuerst eine Auftrags-ID wie F-0001)")
+    if len(t) == 1:
+        return zeige_arbeiter(rolle, am.stand(DATEN)[rolle])
+    if len(t) != 3 or t[1] not in am.FELDER:
+        fehler(f"Aufruf: fabrik arbeiter <rolle> modell <{'|'.join(am.MODELLE)}|standard> "
+               f"oder fabrik arbeiter <rolle> effort <{'|'.join(am.EFFORTS)}|standard>")
+    try:
+        st = am.setze(DATEN, rolle, t[1], t[2])
+    except am.Ungueltig as e:
+        fehler(str(e))
+    except OSError as e:
+        fehler(f"Einstellung konnte nicht gespeichert werden: {e}")
+    zeige_arbeiter(rolle, st)
+
+
+def cmd_modelle(a):
+    """Modell und Effort je Arbeiter (JSON). `aufruf` enthält nur die Parameter, die der Orchestrator mitgibt."""
+    am = arbeiter_modul()
+    print(json.dumps({"aufruf": am.aufruf(DATEN), "stand": am.stand(DATEN), **am.auswahl()}, ensure_ascii=False))
+
+
+def arbeiter_melden(a):
     if a.rolle not in ROLLEN:
         fehler(f"Rolle muss eine von {ROLLEN} sein")
     with auftrag(a.id) as (s, pfad):
@@ -663,9 +709,13 @@ def main():
     x = u.add_parser("runde", help="Prüfrunde setzen")
     x.add_argument("id"); x.add_argument("runde", type=int); x.set_defaults(f=cmd_runde)
 
-    x = u.add_parser("arbeiter", help="Arbeiter beginnt/endet")
-    x.add_argument("id"); x.add_argument("rolle"); x.add_argument("aktion", choices=["start", "ende"])
-    x.set_defaults(f=cmd_arbeiter)
+    x = u.add_parser("arbeiter", help="Arbeiter beginnt/endet oder Modell und Effort eines Arbeiters einstellen",
+                     usage="fabrik arbeiter <ID> <rolle> start|ende\n"
+                           "       fabrik arbeiter <rolle> [modell <fable|opus|sonnet|haiku|standard>]\n"
+                           "       fabrik arbeiter <rolle> [effort <low|medium|high|xhigh|max|standard>]")
+    x.add_argument("teile", nargs="+", metavar="…"); x.set_defaults(f=cmd_arbeiter)
+
+    x = u.add_parser("modelle", help="Modell und Effort aller Arbeiter (JSON)"); x.set_defaults(f=cmd_modelle)
 
     x = u.add_parser("setze", help="Felder setzen: feld=wert")
     x.add_argument("id"); x.add_argument("paare", nargs="+"); x.set_defaults(f=cmd_setze)
