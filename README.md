@@ -84,7 +84,7 @@ Standardmäßig laufen Spec, Builder, Sicherheit und Approver mit Opus, Inspecto
 
 Das lässt sich pro Arbeiter ändern: In der Halle auf einen Arbeiter klicken (oder ihn mit Tab ansteuern und Enter drücken) und Modell und Effort wählen. Gespeichert wird sofort, die Halle bestätigt es oder nennt den Grund, warum es nicht ging. Am Band steht unter jedem Arbeiter, womit er startet. Ohne Halle geht dasselbe mit `fabrik arbeiter <rolle> modell|effort <wert>`; `standard` stellt den Wert aus der Agent-Definition wieder her.
 
-Die Auswahl liegt in `~/.claude/fabrik/einstellungen.json` und übersteht Updates. `/fabrik` liest sie vor jedem Start eines Arbeiters und gibt `model` und `effort` beim Aufruf mit.
+Die Auswahl liegt in `~/.claude/fabrik/einstellungen.json` und übersteht Updates. Kommandozeile und Halle schreiben diese Datei unter einer gemeinsamen Sperre; ist sie beschädigt, gilt sie als leer. `/fabrik` liest sie vor jedem Start eines Arbeiters und gibt `model` und `effort` beim Aufruf mit.
 
 ## Updates
 
@@ -127,7 +127,7 @@ Zum Ausprobieren ohne Installation: `claude --plugin-dir ./plugins/fabrik`
 python3 -m unittest discover -s tests
 ```
 
-Die Tests prüfen, wie die Halle Sitzungen im Benutzer- oder Temp-Ordner benennt, Modell und Effort der Arbeiter (Speichern, Standard, Kommandozeile, Halle) und den Update-Hinweis (Versionsvergleich, Zwischenspeicher, Fehlerfall ohne Netz, Abschalten). Sie nutzen kein Netz und brauchen nur Python 3.9 oder neuer.
+Die Tests prüfen, wie die Halle Sitzungen im Benutzer- oder Temp-Ordner benennt, Modell und Effort der Arbeiter (Speichern, Standard, Kommandozeile, Halle) den Update-Hinweis (Versionsvergleich, Zwischenspeicher, Fehlerfall ohne Netz, Abschalten) sowie die Einstellungsdatei (gleichzeitiges Schreiben von Kommandozeile und Halle unter einer Sperre, beschädigte oder nicht-objektförmige Datei). Sie nutzen kein Netz und brauchen nur Python 3.9 oder neuer.
 
 ## Lizenz
 

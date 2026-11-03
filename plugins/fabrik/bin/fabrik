@@ -24,7 +24,6 @@ from pathlib import Path
 WERK = Path(__file__).resolve().parent.parent
 # Daten: Einstellungen und Laufzeitdateien. Liegen außerhalb des Plugins, damit Updates sie nicht löschen.
 DATEN = Path(os.environ.get("FABRIK_DATEN", Path.home() / ".claude/fabrik"))
-EINSTELLUNGEN = DATEN / "einstellungen.json"
 LAGER_STANDARD = Path.home() / "Claude-Fabrik"
 # Diese Einstellungen lassen sich mit `fabrik einstellung <name> <wert>` setzen.
 EINSTELLBAR = {
@@ -65,13 +64,34 @@ __pycache__/
 """
 
 
+def arbeiter_modul():
+    """Gemeinsames Modul mit der Halle: Arbeiter-Einstellungen, Sperre und Lesen/Schreiben von einstellungen.json."""
+    halle = str(WERK / "halle")
+    if halle not in sys.path:
+        sys.path.insert(0, halle)
+    import arbeiter
+    return arbeiter
+
+
 def lies_einstellungen():
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        d = {}
-    d["deaktiviert"] = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR]
+    """Liest einstellungen.json. Fehlt sie oder ist sie kein JSON-Objekt, gilt sie als leer."""
+    d = arbeiter_modul()._lies_alles(DATEN)
+    deaktiviert = d.get("deaktiviert")
+    if not isinstance(deaktiviert, list):
+        deaktiviert = []
+    d["deaktiviert"] = [r for r in deaktiviert if isinstance(r, str) and r in SCHALTBAR]
     return d
+
+
+@contextmanager
+def einstellungen_aendern():
+    """Liest die Einstellungen unter der gemeinsamen Sperre (wie Halle und `fabrik arbeiter`),
+    übergibt sie zum Ändern und speichert sie danach unter derselben Sperre."""
+    am = arbeiter_modul()
+    with am._sperre(DATEN):
+        d = lies_einstellungen()
+        yield d
+        am._schreibe_alles(DATEN, d)
 
 
 def lager_ermitteln():
@@ -152,13 +172,6 @@ def wert(text):
 
 # --- Befehle -----------------------------------------------------------------
 
-def schreibe_einstellungen(d):
-    DATEN.mkdir(parents=True, exist_ok=True)
-    tmp = EINSTELLUNGEN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-    os.replace(tmp, EINSTELLUNGEN)
-
-
 def cmd_rollen(a):
     """Zeigt, welche Prüfer aktiv und welche abgeschaltet sind (JSON)."""
     aus = lies_einstellungen()["deaktiviert"]
@@ -169,12 +182,11 @@ def cmd_rolle(a):
     """Schaltet einen Prüfer an oder aus."""
     if a.rolle not in SCHALTBAR:
         fehler(f"Nur diese Prüfer lassen sich schalten: {', '.join(SCHALTBAR)}")
-    d = lies_einstellungen()
-    aus = [r for r in d["deaktiviert"] if r != a.rolle]
-    if a.zustand == "aus":
-        aus.append(a.rolle)
-    d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
-    schreibe_einstellungen(d)
+    with einstellungen_aendern() as d:
+        aus = [r for r in d["deaktiviert"] if r != a.rolle]
+        if a.zustand == "aus":
+            aus.append(a.rolle)
+        d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
     print(f"{a.rolle}: {a.zustand}")
 
 
@@ -191,8 +203,8 @@ def cmd_einstellung(a):
         print(json.dumps(stand, ensure_ascii=False, indent=2))
         return
     if a.name == "eingerichtet":
-        d["eingerichtet"] = True
-        schreibe_einstellungen(d)
+        with einstellungen_aendern() as d:
+            d["eingerichtet"] = True
         print("eingerichtet")
         return
     if a.name not in EINSTELLBAR:
@@ -209,11 +221,11 @@ def cmd_einstellung(a):
             fehler(f"{a.name} muss {' oder '.join(werte)} sein")
     if a.name == "lager" and wert_neu:
         wert_neu = str(Path(wert_neu).expanduser().resolve())
-    if wert_neu:
-        d[a.name] = wert_neu
-    else:
-        d.pop(a.name, None)
-    schreibe_einstellungen(d)
+    with einstellungen_aendern() as d:
+        if wert_neu:
+            d[a.name] = wert_neu
+        else:
+            d.pop(a.name, None)
     print(f"{a.name}: {wert_neu or '(leer)'}")
 
 
@@ -287,12 +299,6 @@ def cmd_runde(a):
     with auftrag(a.id) as (s, pfad):
         s["runde"] = a.runde
     ereignis(pfad, "runde", f"Runde {a.runde} beginnt")
-
-
-def arbeiter_modul():
-    sys.path.insert(0, str(WERK / "halle"))
-    import arbeiter
-    return arbeiter
 
 
 def zeige_arbeiter(rolle, st):

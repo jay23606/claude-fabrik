@@ -1,5 +1,16 @@
 # Änderungen
 
+## Version 5 – 2026-11-03
+
+Fabrik-Version 5 des Auftrags F-0004, Plugin-Version unverändert 0.4.0.
+
+### Geändert
+- `fabrik rolle` und `fabrik einstellung` schreiben die Einstellungsdatei unter derselben Sperre wie die Halle und die Modellwahl, mit eindeutiger Tempdatei je Prozess.
+
+### Behoben
+- Eine beschädigte `einstellungen.json` (JSON-Array, Text, Zahl, `null`, kaputtes JSON oder falsches `deaktiviert`) gilt in Kommandozeile und Halle als leer, statt einen Absturz auszulösen.
+- Gleichzeitige Änderungen von Kommandozeile und Halle überschreiben sich nicht mehr gegenseitig.
+
 ## Version 4 – 2026-11-03
 
 Fabrik-Version 4 des Auftrags F-0004, entspricht Plugin-Version 0.4.0.

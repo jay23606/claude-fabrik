@@ -38,7 +38,6 @@ CLAUDE = Path.home() / ".claude"
 ID_MUSTER = re.compile(r"^F-\d{4}$")
 SITZUNG_MUSTER = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SCHREIB_WERKZEUGE = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-EINSTELLUNGEN = DATEN / "einstellungen.json"
 # Nur Prüfer lassen sich abschalten (gleiche Liste wie im Werkzeug fabrik).
 SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"]
 DATEIEN = {
@@ -430,19 +429,21 @@ def sitzung_details(sid):
     }
 
 
+def _deaktiviert(d):
+    liste = d.get("deaktiviert")
+    return [r for r in liste if isinstance(r, str) and r in SCHALTBAR] if isinstance(liste, list) else []
+
+
 def rollen_aus():
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        return []
-    return [r for r in d.get("deaktiviert", []) if r in SCHALTBAR]
+    # _lies_alles liefert bei fehlender, kaputter oder nicht-objektförmiger Datei {}.
+    return _deaktiviert(arbeiter._lies_alles(DATEN))
 
 
 def setze_rolle(rolle, aktiv):
     # Gleiche Sperre wie beim Speichern von Modell und Effort, damit sich beide nicht überschreiben.
     with arbeiter._sperre(DATEN):
         d = arbeiter._lies_alles(DATEN)
-        aus = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR and r != rolle]
+        aus = [r for r in _deaktiviert(d) if r != rolle]
         if not aktiv:
             aus.append(rolle)
         d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
