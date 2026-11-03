@@ -345,20 +345,19 @@ function zeichneArbeiter(eltern, rolle, r) {
     "font-family": "ui-monospace, SF Mono, Menlo, monospace", fill: "#23262e" }, blase);
 
   const pause = el("g", { class: "pause-schild", transform: "translate(0 -150)" }, g);
-  el("rect", { x: -38, y: -14, width: 76, height: 22, rx: 4, fill: "#59627a" }, pause);
-  el("text", { x: 0, y: 2, "text-anchor": "middle", "font-size": 11, fill: "#fff", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, pause)
+  el("rect", { x: -46, y: -15, width: 92, height: 24, rx: 4, fill: "#59627a" }, pause);
+  el("text", { x: 0, y: 2, "text-anchor": "middle", "font-size": 12, fill: "#fff", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, pause)
     .textContent = "Pause · ohne UI";
 
   const aus = el("g", { class: "aus-schild", transform: "translate(0 -150)" }, g);
-  el("rect", { x: -34, y: -14, width: 68, height: 22, rx: 4, fill: "#111318", stroke: "#59627a" }, aus);
-  el("text", { x: 0, y: 2, "text-anchor": "middle", "font-size": 11, "font-weight": 700, fill: "#d9deea", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, aus)
+  el("rect", { x: -42, y: -15, width: 84, height: 24, rx: 4, fill: "#111318", stroke: "#59627a" }, aus);
+  el("text", { x: 0, y: 2, "text-anchor": "middle", "font-size": 12, "font-weight": 700, fill: "#d9deea", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, aus)
     .textContent = "abgeschaltet";
 
   // Jeder Arbeiter ist anklickbar: öffnet seine Einstellungen (Modell, Effort, bei Prüfern an/aus).
   // Unsichtbare Fläche, damit der ganze Arbeiter eine große Trefferfläche hat.
   el("rect", { class: "arbeiter-flaeche", x: -32, y: -125, width: 64, height: 128, rx: 8, fill: "transparent" }, g);
   g.classList.add("klickbar");
-  if (SCHALTBAR.includes(rolle)) g.classList.add("schaltbar");
   g.setAttribute("tabindex", "0");
   g.setAttribute("role", "button");
   g.setAttribute("aria-haspopup", "dialog");
@@ -371,7 +370,8 @@ function zeichneArbeiter(eltern, rolle, r) {
   g.addEventListener("blur", versteckeTooltip);
 }
 
-const SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"];
+// Abschaltbare Prüfer. Die Liste kommt mit /api/stand vom Server (arbeiter.py), das hier ist nur der Startwert.
+let SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"];
 
 // Was beim nächsten Start dieser Rolle gilt: Modell und Effort samt Herkunft.
 function arbeiterStand(rolle) {
@@ -405,6 +405,7 @@ function zeigeRollen() {
     const g = $(`w-${rolle}`);
     if (!g) continue;
     const aus = SCHALTBAR.includes(rolle) && zustand.rollenAus.includes(rolle);
+    g.classList.toggle("schaltbar", SCHALTBAR.includes(rolle));
     g.classList.toggle("aus", aus);
     const st = arbeiterStand(rolle);
     const stil = modellStil(st?.gilt_modell);
@@ -466,6 +467,9 @@ function baueGruppe(a) {
   const leuchte = el("g", { class: "leuchte" }, innen);
   el("rect", { x: -7, y: -56, width: 14, height: 6, rx: 1, fill: "#2a2a2a" }, leuchte);
   el("circle", { cx: 0, cy: -62, r: 7, fill: "#ff3b3b", filter: "url(#f-glow)" }, leuchte);
+  // Das Ausrufezeichen blinkt nicht mit und bleibt auch bei reduzierter Bewegung stehen.
+  el("text", { class: "esk-zeichen", x: 0, y: -58, "text-anchor": "middle", "font-size": 11, "font-weight": 900, fill: "#fff",
+    "font-family": "-apple-system, Helvetica, Arial, sans-serif", "aria-hidden": "true" }, innen).textContent = "!";
   el("text", { class: "schlaf", x: -30, y: -56, "font-size": 15, "font-weight": 700, fill: "#cfd5e2", "font-family": "Chalkboard SE, Comic Sans MS, cursive" }, innen)
     .textContent = "z z";
   el("text", { class: "hinweis", x: 0, y: -70, "text-anchor": "middle", "font-size": 13, "font-weight": 800, fill: "#f2c94c", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, innen);
@@ -690,12 +694,12 @@ function aktualisiereWerkbaenke(sitzungen) {
       el("rect", { x: 56, y: -46, width: 7, height: 4, rx: 2, fill: "#f0c9a0" }, tippen);
     }
     // Ohne erkennbares Projekt steht nur ein Platzhalter da, der tritt dezent zurück.
-    el("text", { x: 72, y: 16, "text-anchor": "middle", "font-size": s.dezent ? 11 : 13, "font-weight": s.dezent ? 400 : 600,
-      fill: s.dezent ? "#8b93a7" : "#d9deea", class: s.dezent ? "bank-name dezent" : "bank-name",
+    el("text", { x: 72, y: 16, "text-anchor": "middle", "font-size": s.dezent ? 12 : 13, "font-weight": s.dezent ? 400 : 600,
+      fill: s.dezent ? "#a0a8bb" : "#d9deea", class: s.dezent ? "bank-name dezent" : "bank-name",
       "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, g)
       .textContent = kurz(s.projekt, 18);
     const zust = { arbeitet: "arbeitet", wartet: "wartet", ruht: "zuletzt " + new Date(s.seit).toLocaleDateString("de-DE") }[s.zustand];
-    el("text", { x: 72, y: 30, "text-anchor": "middle", "font-size": 11, fill: "#8b93a7", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, g)
+    el("text", { x: 72, y: 31, "text-anchor": "middle", "font-size": 12, fill: "#a0a8bb", "font-family": "-apple-system, Helvetica, Arial, sans-serif" }, g)
       .textContent = kurz(s.name ? `${s.name} · ${zust}` : zust, 24);
     const info = { titel: s.projekt, zeilen: [s.name, s.cwd, zust, s.id ? "Klicken für Details" : ""].filter(Boolean) };
     if (s.id) {
@@ -807,9 +811,14 @@ function rendereKarte(d) {
   $("karte-id").textContent = s.id;
   $("karte-titel").textContent = s.titel;
   const knopf = $("karte-kopieren");
-  knopf.textContent = `/fabrik ${s.id}   ⧉ kopieren`;
-  knopf.dataset.befehl = `/fabrik ${s.id}`;
-  knopf.classList.remove("ok");
+  const rueckmeldung = knopf.classList.contains("ok") || knopf.classList.contains("fehlgeschlagen");
+  // Beim regelmäßigen Neuzeichnen die Rückmeldung „kopiert“ stehen lassen.
+  if (knopf.dataset.befehl !== `/fabrik ${s.id}` || !rueckmeldung) {
+    clearTimeout(knopf._zuruecksetzen);
+    knopf.textContent = `/fabrik ${s.id}   ⧉ kopieren`;
+    knopf.dataset.befehl = `/fabrik ${s.id}`;
+    knopf.classList.remove("ok", "fehlgeschlagen");
+  }
 
   const idx = REIHENFOLGE.indexOf(s.station);
   const schritte = [["spec", "Spec"], ["bau", "Bau"], ["pruefung", "Prüfung"], ["freigabe", "Freigabe"], ["fertig", "Fertig"]]
@@ -851,8 +860,8 @@ function rendereKarte(d) {
 
   h += `<h3>Abnahmekriterien</h3>`;
   h += s.kriterien.length ? `<ul class="liste">${s.kriterien.map((k) => {
-    const [cls, z] = k.erfuellt === true ? ["ja", "✓"] : k.erfuellt === false ? ["nein", "✗"] : ["offen", "○"];
-    return `<li><span class="haken ${cls}">${z}</span><span><b>${esc(k.id)}</b> ${esc(k.text)}</span></li>`;
+    const [cls, z, text] = k.erfuellt === true ? ["ja", "✓", "erfüllt"] : k.erfuellt === false ? ["nein", "✗", "nicht erfüllt"] : ["offen", "○", "offen"];
+    return `<li><span class="haken ${cls}" aria-hidden="true">${z}</span><span><span class="nur-vorlesen">${text}: </span><b>${esc(k.id)}</b> ${esc(k.text)}</span></li>`;
   }).join("")}</ul>` : `<p class="leer">Noch keine</p>`;
 
   h += `<h3>Todos</h3>`;
@@ -967,9 +976,7 @@ function rendereArbeiter(rolle) {
   const stdModell = st.standard_modell ? modellStil(st.standard_modell).name : "wie die Sitzung";
   const stdEffort = st.standard_effort ? EFFORT_NAME[st.standard_effort] : "wie die Agent-Definition";
   const modelle = [["standard", `Standard (${stdModell})`], ...auswahl.modelle.map((m) => [m.wert, m.name])];
-  const erlaubt = auswahl.modelle.find((m) => m.wert === st.gilt_modell)?.efforts || auswahl.efforts.map((e) => e.wert);
-  const efforts = [["standard", `Standard (${stdEffort})`],
-    ...auswahl.efforts.filter((e) => erlaubt.includes(e.wert)).map((e) => [e.wert, `${e.name} (${e.wert})`])];
+  const efforts = [["standard", `Standard (${stdEffort})`], ...auswahl.efforts.map((e) => [e.wert, `${e.name} (${e.wert})`])];
 
   let h = `<p>Beim nächsten Start arbeitet ${esc(ROLLEN[rolle].titel)} mit <b id="a-gilt">${esc(einsatzText(rolle))}</b>.</p>
     <div class="feld">
@@ -1048,16 +1055,46 @@ async function ladeKarte(id) {
   }
   if (id.startsWith("S:")) {
     const r = await fetch(`/api/sitzung/${encodeURIComponent(id.slice(2))}`);
-    if (!r.ok) throw new Error("Sitzung nicht gefunden");
+    if (!r.ok) throw new Error(r.status === 404 ? "Sitzung nicht gefunden." : `Fehler ${r.status}.`);
     return rendereSitzung(await r.json());
   }
   const r = await fetch(`/api/auftrag/${encodeURIComponent(id)}`);
-  if (!r.ok) throw new Error("Auftrag nicht gefunden");
+  if (!r.ok) throw new Error(r.status === 404 ? "Auftrag nicht gefunden." : `Fehler ${r.status}.`);
   $("karte-kopieren").hidden = false;
   rendereKarte(await r.json());
 }
 
 function oeffneSitzung(sid) { return oeffneKarte("S:" + sid); }
+
+function kartenName(id) {
+  if (id.startsWith("A:")) return ROLLEN[id.slice(2)]?.titel || "Arbeiter";
+  if (id.startsWith("S:")) return "Sitzung";
+  return id;
+}
+
+function zeigeKartenFehler(id, fehler) {
+  const grund = fehler instanceof TypeError ? "Keine Verbindung zur Halle." : fehler?.message || "Unbekannter Fehler.";
+  $("karte-id").textContent = kartenName(id);
+  $("karte-titel").textContent = "Konnte nicht geladen werden";
+  $("karte-kopieren").hidden = true;
+  $("karte-inhalt").innerHTML = `<p class="fehler" role="alert">✗ Die Karte konnte nicht geladen werden: ${esc(grund)}</p>
+    <p class="leer">Die Halle versucht es weiter, solange die Karte offen ist.</p>
+    <button type="button" class="erneut" id="karte-erneut">Erneut versuchen</button>`;
+  zustand.karteGerendert = null;
+  zustand.arbeiterSignatur = null;
+}
+
+async function ladeKarteErneut() {
+  const id = zustand.offeneKarte;
+  if (!id) return;
+  try {
+    await ladeKarte(id);
+    $("karte-zu").focus();
+  } catch (fehler) {
+    zeigeKartenFehler(id, fehler);
+    $("karte-erneut")?.focus();
+  }
+}
 
 // Merkt sich, von wo die Karte geöffnet wurde, damit der Fokus beim Schließen dorthin zurückgeht.
 function merkeAusloeser() {
@@ -1086,7 +1123,13 @@ async function oeffneKarte(id) {
   zustand.offeneKarte = id;
   zustand.karteGerendert = null;
   zustand.arbeiterSignatur = null;
-  try { await ladeKarte(id); } catch { if (!warOffen) zustand.offeneKarte = null; return; }
+  try {
+    await ladeKarte(id);
+  } catch (fehler) {
+    // Die Karte öffnet trotzdem und sagt, was schiefging. Solange sie offen ist,
+    // versucht die regelmäßige Abfrage es erneut.
+    zeigeKartenFehler(id, fehler);
+  }
   zustand.ausloeser = ausloeser;
   const karte = $("karte");
   karte.inert = false;
@@ -1111,20 +1154,36 @@ function schliesseKarte() {
   if (ziel) ziel.focus({ preventScroll: false });
 }
 
+function ansagen(text) {
+  // Erst leeren, dann setzen: so sagt der Screenreader auch denselben Text ein zweites Mal an.
+  const ansage = $("ansage");
+  ansage.textContent = "";
+  setTimeout(() => { ansage.textContent = text; }, 50);
+}
+
 async function kopiere(e) {
   const knopf = e?.currentTarget instanceof HTMLElement && e.currentTarget.dataset.befehl ? e.currentTarget : $("karte-kopieren");
   const text = knopf.dataset.befehl;
   const anzeige = knopf.dataset.beschriftung || text;
+  let geklappt = true;
   try {
     await navigator.clipboard.writeText(text);
   } catch {
     const t = document.createElement("textarea");
     t.value = text; document.body.appendChild(t); t.select();
-    document.execCommand("copy"); t.remove();
+    try { geklappt = document.execCommand("copy"); } catch { geklappt = false; }
+    t.remove();
   }
-  knopf.textContent = `${anzeige}   ✓ kopiert`;
-  knopf.classList.add("ok");
-  setTimeout(() => { knopf.textContent = `${anzeige}   ⧉ kopieren`; knopf.classList.remove("ok"); }, 1800);
+  clearTimeout(knopf._zuruecksetzen);
+  knopf.classList.toggle("ok", geklappt);
+  knopf.classList.toggle("fehlgeschlagen", !geklappt);
+  // Zeichen und Wort zeigen das Ergebnis, die Farbe ist nur Zugabe.
+  knopf.textContent = geklappt ? `✓ kopiert: ${anzeige}` : `✗ nicht kopiert, bitte von Hand markieren: ${anzeige}`;
+  ansagen(geklappt ? "Befehl in die Zwischenablage kopiert." : "Kopieren nicht möglich. Bitte den Befehl von Hand markieren.");
+  knopf._zuruecksetzen = setTimeout(() => {
+    knopf.textContent = `${anzeige}   ⧉ kopieren`;
+    knopf.classList.remove("ok", "fehlgeschlagen");
+  }, geklappt ? 2500 : 6000);
 }
 
 // --- Abfrage -----------------------------------------------------------------
@@ -1134,7 +1193,8 @@ async function abfragen() {
     const r = await fetch("/api/stand", { cache: "no-store" });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    $("verbindung").hidden = true;
+    $("verbindung").textContent = "";
+    if (Array.isArray(d.schaltbar)) SCHALTBAR = d.schaltbar;
     zustand.auftraege = d.auftraege;
     aktualisierePakete(d.auftraege);
     aktualisiereArbeiter(d.auftraege);
@@ -1144,9 +1204,16 @@ async function abfragen() {
     aktualisiereTafel(d.auftraege, d.sitzungen, d.wach);
     aktualisiereWerkbaenke(d.sitzungen);
     zustand.erstesMal = false;
-    if (zustand.offeneKarte) ladeKarte(zustand.offeneKarte).catch(() => {});
+    if (zustand.offeneKarte) {
+      // Zeigt die Karte gerade einen Ladefehler, klappt es hier vielleicht beim nächsten Mal.
+      ladeKarte(zustand.offeneKarte)
+        .then(() => { if (zustand.offeneKarte && document.activeElement === document.body) $("karte-zu").focus(); })
+        .catch(() => {});
+    }
   } catch {
-    $("verbindung").hidden = false;
+    const meldung = $("verbindung");
+    const text = "Keine Verbindung zum Lager. Neuer Versuch läuft …";
+    if (meldung.textContent !== text) meldung.textContent = text;
   }
 }
 
@@ -1177,8 +1244,7 @@ async function pruefeUpdate() {
   const knopf = $("update-befehl");
   knopf.dataset.befehl = d.befehl;
   knopf.dataset.beschriftung = d.befehl;
-  if (!knopf.classList.contains("ok")) knopf.textContent = `${d.befehl}   ⧉ kopieren`;
-  $("update-nachsatz").textContent = d.hinweis ? `Im Terminal ausführen, ${d.hinweis}.` : "";
+  if (!knopf.classList.contains("ok") && !knopf.classList.contains("fehlgeschlagen")) knopf.textContent = `${d.befehl}   ⧉ kopieren`;
   banner.hidden = false;
 }
 
@@ -1208,6 +1274,7 @@ zeichneSzene();
 $("werkstatt-kopf").addEventListener("click", werkstattUmschalten);
 $("werkstatt-kopf").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); werkstattUmschalten(); } });
 $("karte-inhalt").addEventListener("click", (e) => {
+  if (e.target.closest("#karte-erneut")) return ladeKarteErneut();
   const knopf = e.target.closest("button[data-befehl]");
   if (knopf) kopiere({ currentTarget: knopf });
   const schalter = e.target.closest("#a-pruefer");
@@ -1221,7 +1288,12 @@ $("schleier").addEventListener("click", schliesseKarte);
 $("karte-kopieren").addEventListener("click", kopiere);
 $("update-befehl").addEventListener("click", kopiere);
 $("update-zu").addEventListener("click", schliesseUpdate);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") schliesseKarte(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  // Escape blendet zuerst einen offenen Tooltip aus, dann schließt es die Karte (nur wenn sie offen ist).
+  if (!tooltip.hidden) { versteckeTooltip(); return; }
+  if (zustand.offeneKarte) schliesseKarte();
+});
 window.addEventListener("hashchange", () => {
   const id = location.hash.slice(1);
   if (/^F-\d{4}$/.test(id)) oeffneKarte(id);

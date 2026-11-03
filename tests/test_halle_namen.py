@@ -1,14 +1,18 @@
 """Tests für die Projektnamen von Sitzungen im Benutzer- oder Temp-Ordner.
 
-Start: python3 -m unittest discover -s tests
+Start: python3 -B -m unittest discover -s tests
 """
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+
+# Beim Laden der Plugin-Module keine __pycache__-Ordner im Plugin anlegen.
+sys.dont_write_bytecode = True
 
 SERVER = Path(__file__).resolve().parent.parent / "plugins/fabrik/halle/server.py"
 
@@ -92,7 +96,8 @@ class ProjektnamenTest(unittest.TestCase):
     def test_platzhalter_nur_ohne_beides(self):
         datei = self.transkript([{"type": "user", "message": {"content": "hallo"}}])
         self.assertEqual(self.s.anzeigename(str(self.home), datei), (self.s.BENUTZERORDNER, True))
-        self.assertEqual(self.s.anzeigename(str(self.temp / "claude-501/x")), (self.s.BENUTZERORDNER, True))
+        # Temp-Ordner ohne Projekt und Titel bekommen einen eigenen Platzhalter.
+        self.assertEqual(self.s.anzeigename(str(self.temp / "claude-501/x")), (self.s.TEMP_PLATZHALTER, True))
 
     def test_echter_projektordner_bleibt(self):
         self.assertEqual(self.s.anzeigename(str(self.home / "Documents/Projekte/Tracko")), ("Tracko", False))

@@ -1,5 +1,40 @@
 # Änderungen
 
+## Version 6 – 2026-11-03
+
+Fabrik-Version 6 des Auftrags F-0004, entspricht Plugin-Version 0.4.1 (Einzelheiten im Abschnitt 0.4.1).
+
+### Geändert
+- Sitzungen in den Arbeitsordnern der Claude-App zeigen in der Halle den Namen ihres Projekts, ohne Projekt und Titel steht in Temp- und Arbeitsordnern „Temp-Ordner“.
+- Update-Hinweis und Verbindungsmeldung stehen als Leisten über der Halle und verdecken nichts mehr.
+- Jede Effort-Stufe ist mit jedem Modell wählbar, Rollen und abschaltbare Prüfer stehen nur noch in `halle/arbeiter.py`.
+
+### Behoben
+- Bedienbarkeit und Kontrast der Halle sind verbessert (Ansagen für Screenreader, Fokusrahmen, Schriftgrößen, Fehlerkarte mit „Erneut versuchen“, kein farbiger Randakzent).
+- Ein Netzfehler löscht ein bekanntes Update nicht mehr, und der Zwischenspeicher nimmt nur gültige Versionsnummern an.
+- Ungültiges UTF-8 in `einstellungen.json` bricht keine Befehle mehr ab, und Lesen schreibt keine Standardwerte mehr in die Datei.
+- Schreibende Anfragen an die Halle mit negativer oder zu großer Länge werden sofort abgelehnt, Pfade aus Transkripten werden normalisiert.
+- Werkzeug und Halle legen keine `__pycache__`-Ordner im Plugin mehr an.
+
+## 0.4.1 – 2026-11-03
+
+Korrekturen aus den Prüfungen der Versionen 0.3.0 bis 0.4.0.
+
+### Geändert
+- Halle: Sitzungen in den Arbeitsordnern der Claude-App (`~/Library/Application Support/Claude/scratch-workspaces/…`) zeigen wie Sitzungen im Benutzer- oder Temp-Ordner den Namen ihres Projekts. Ohne Projekt und Titel steht in Temp- und Arbeitsordnern „Temp-Ordner“, im Benutzerordner weiter „~ (Benutzerordner)“.
+- Halle: Update-Hinweis und Verbindungsmeldung stehen als schmale Leisten über der Halle, schieben sie nach unten und verdecken weder die Halle noch einander. Der Hinweissatz ist fest formuliert, der Schließen-Knopf 44 × 44 px groß.
+- Halle: Jede Effort-Stufe ist mit jedem Modell wählbar; die bisherige Liste je Modell war wirkungslos und entfällt.
+- Rollen und abschaltbare Prüfer stehen nur noch an einer Stelle (`halle/arbeiter.py`), Werkzeug und Halle übernehmen sie von dort.
+
+### Behoben
+- Halle, Bedienung: Verbindungsmeldung und Kopier-Rückmeldung werden für Screenreader angesagt; Kopieren zeigt Zeichen und Wort („✓ kopiert“) statt nur Farbe, auch wenn es scheitert.
+- Halle, Bedienung: Ladefehler einer Infokarte werden mit Grund und „Erneut versuchen“ gezeigt, solange die Karte offen ist, wird es weiter versucht. Escape blendet erst den Tooltip aus und schließt die Karte nur, wenn sie offen ist.
+- Halle, Darstellung: Tastaturfokus in der Szene mit durchgezogenem gelbem Rahmen (3 px); kleine Schrift (Schritte, Eckdaten, Verlauf, Werkbänke) auf mindestens 12 px; Kontrast von offenen Haken, Platzhaltern und Kopier-Bestätigung erhöht; Abnahmekriterien nennen ihren Zustand auch für Screenreader; eskalierte Aufträge tragen ein nicht blinkendes Ausrufezeichen; die Alarm-Box hat keinen farbigen Randakzent mehr.
+- Update-Hinweis: Ein Netzfehler löscht ein schon bekanntes Update nicht mehr; der Zwischenspeicher liefert nur gültige Versionsnummern; die Halle nimmt keinen Zwischenspeicher, der älter als 24 Stunden ist; `fabrik update` hat auch im Fehlerfall dieselben Felder.
+- Einstellungen: Ungültiges UTF-8 in `einstellungen.json` bricht keine Befehle mehr ab; Lesen schreibt keine Standardwerte mehr in die Datei; `fabrik modelle` liest die Datei für alle Rollen nur einmal.
+- Halle, Sicherheit: Schreibende Anfragen mit negativer oder zu großer Länge werden sofort abgelehnt (400 bzw. 413), statt den Handler zu blockieren. Pfade aus Transkripten werden vor der Prüfung normalisiert, auf eingehängten Laufwerken (`/Volumes` und ähnliche) wird nicht nach Projekten gesucht.
+- Werkzeug und Halle legen keine `__pycache__`-Ordner im Plugin an.
+
 ## Version 5 – 2026-11-03
 
 Fabrik-Version 5 des Auftrags F-0004, Plugin-Version unverändert 0.4.0.

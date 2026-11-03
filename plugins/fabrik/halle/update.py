@@ -19,6 +19,8 @@ BEFEHL = "claude plugin marketplace update claude-fabrik && claude plugin update
 HINWEIS_NEUSTART = "danach Claude Code neu starten"
 ZEITLIMIT_S = 3
 PRUEF_ABSTAND_S = 6 * 3600
+# Die Halle liest nur den Zwischenspeicher; älter als das gilt er dort nicht mehr.
+NUR_CACHE_MAX_ALTER_S = 24 * 3600
 MAX_ANTWORT = 512 * 1024
 SEMVER = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 
@@ -82,14 +84,25 @@ def neueste_holen(url=RELEASE_URL, zeitlimit=ZEITLIMIT_S):
     return tag.strip().lstrip("v")
 
 
+def leerer_stand(installiert=None):
+    """Stand ohne Update. Gleiche Schlüssel wie `stand`, auch für den Rückfall in `fabrik update`."""
+    return {"installiert": installiert, "neueste": None, "update_verfuegbar": False,
+            "befehl": BEFEHL, "hinweis": HINWEIS_NEUSTART, "abgeschaltet": False}
+
+
 def cache_lesen(datei):
+    """Zwischenspeicher oder None. `neueste` wird wie die Netzantwort auf SemVer geprüft."""
     try:
-        d = json.loads(Path(datei).read_text())
+        d = json.loads(Path(datei).read_text(encoding="utf-8"))
         geprueft = float(d["geprueft"])
     except (OSError, ValueError, KeyError, TypeError):
         return None
     neueste = d.get("neueste")
-    return {"geprueft": geprueft, "neueste": neueste if isinstance(neueste, str) else None}
+    if not version_lesen(neueste):
+        neueste = None
+    else:
+        neueste = neueste.strip().lstrip("v")
+    return {"geprueft": geprueft, "neueste": neueste}
 
 
 def cache_schreiben(datei, neueste, zeit):
@@ -107,7 +120,7 @@ def hinweis_an(einstellungen_datei=None):
     """Einstellung `update_hinweis`: Standard an, nur `aus` schaltet ab."""
     datei = Path(einstellungen_datei or daten_ordner() / "einstellungen.json")
     try:
-        wert = json.loads(datei.read_text()).get("update_hinweis", "an")
+        wert = json.loads(datei.read_text(encoding="utf-8")).get("update_hinweis", "an")
     except (OSError, ValueError, AttributeError):
         return True
     return str(wert).strip().lower() != "aus"
@@ -118,24 +131,30 @@ def stand(daten=None, holen=neueste_holen, jetzt=None, plugin_json=None, nur_cac
 
     Abgefragt wird höchstens alle 6 Stunden; dazwischen gilt der Zwischenspeicher
     `update.json` im Datenordner. Auch ein Fehlschlag wird gemerkt, damit ohne Netz
-    nicht bei jedem Aufruf neu gewartet wird. `nur_cache` fragt nie im Netz nach.
+    nicht bei jedem Aufruf neu gewartet wird; eine schon bekannte neueste Version
+    bleibt dabei erhalten. `nur_cache` fragt nie im Netz nach und nimmt nur einen
+    Zwischenspeicher, der jünger als 24 Stunden ist.
     """
     daten = Path(daten or daten_ordner())
     jetzt = time.time() if jetzt is None else jetzt
     installiert = installierte_version(plugin_json)
-    ergebnis = {"installiert": installiert, "neueste": None, "update_verfuegbar": False,
-                "befehl": BEFEHL, "hinweis": HINWEIS_NEUSTART, "abgeschaltet": False}
+    ergebnis = leerer_stand(installiert)
     try:
         if not hinweis_an(daten / "einstellungen.json"):
             ergebnis["abgeschaltet"] = True
             return ergebnis
         cache_datei = daten / "update.json"
         cache = cache_lesen(cache_datei)
-        frisch = cache is not None and 0 <= jetzt - cache["geprueft"] < PRUEF_ABSTAND_S
-        if frisch or nur_cache:
-            neueste = cache["neueste"] if cache else None
+        alter = jetzt - cache["geprueft"] if cache else None
+        if nur_cache:
+            neueste = cache["neueste"] if alter is not None and 0 <= alter < NUR_CACHE_MAX_ALTER_S else None
+        elif alter is not None and 0 <= alter < PRUEF_ABSTAND_S:
+            neueste = cache["neueste"]
         else:
             neueste = holen()
+            if not version_lesen(neueste):
+                # Fehlschlag: bekannten Wert behalten, nur den Zeitpunkt der Prüfung erneuern.
+                neueste = cache["neueste"] if cache else None
             cache_schreiben(cache_datei, neueste, jetzt)
         ergebnis["neueste"] = neueste
         ergebnis["update_verfuegbar"] = bool(installiert and neueste and ist_neuer(neueste, installiert))

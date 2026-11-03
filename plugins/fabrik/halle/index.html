@@ -7,17 +7,24 @@
 <link rel="stylesheet" href="halle.css">
 </head>
 <body>
+<!-- Kopfleiste über der Halle: Verbindungsmeldung und Update-Hinweis liegen untereinander
+     und schieben die Halle nach unten, statt sie oder einander zu verdecken. -->
+<div class="kopfleiste" id="kopfleiste">
+  <p class="verbindung" id="verbindung" role="status" aria-live="polite"></p>
+  <div class="update-banner" id="update" role="status" aria-live="polite" hidden>
+    <p class="update-text"><strong id="update-titel"></strong> <span id="update-installiert"></span></p>
+    <button class="kopieren klein update-befehl" id="update-befehl" type="button"></button>
+    <p class="update-nachsatz">Im Terminal ausführen, danach Claude Code neu starten.</p>
+    <button class="update-zu" id="update-zu" type="button" aria-label="Update-Hinweis schließen">×</button>
+  </div>
+</div>
+
 <main class="halle-rahmen" id="halle-rahmen">
   <svg id="halle" viewBox="0 0 1600 960" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fabrikhalle mit allen Aufträgen"></svg>
-  <p class="verbindung" id="verbindung" hidden>Keine Verbindung zum Lager … neuer Versuch läuft</p>
 </main>
 
-<div class="update-banner" id="update" role="status" aria-live="polite" hidden>
-  <p class="update-text"><strong id="update-titel"></strong> <span id="update-installiert"></span></p>
-  <button class="kopieren klein update-befehl" id="update-befehl" type="button"></button>
-  <p class="update-nachsatz" id="update-nachsatz"></p>
-  <button class="update-zu" id="update-zu" type="button" aria-label="Update-Hinweis schließen">×</button>
-</div>
+<!-- Ansagen für Screenreader, z. B. „Befehl kopiert“ -->
+<p class="nur-vorlesen" id="ansage" role="status" aria-live="polite"></p>
 
 <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
 

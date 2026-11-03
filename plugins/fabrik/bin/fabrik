@@ -4,24 +4,30 @@
 Alle Stationen melden ihren Fortschritt über dieses Skript, damit
 status.json immer gültig bleibt und die Halle den Stand anzeigen kann.
 """
-import argparse
-import fcntl
-import json
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import time
-import urllib.request
-import webbrowser
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
+
+# Keine __pycache__-Ordner im Plugin anlegen (bin/ und halle/ werden bei Updates ersetzt).
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import fcntl
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import shutil  # noqa: E402
+import signal  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+import urllib.request  # noqa: E402
+import webbrowser  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 # Werk: der Plugin-Ordner (Skripte, Halle). Wird bei jedem Update ersetzt.
 WERK = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(WERK / "halle"))
+import arbeiter  # noqa: E402 - gemeinsames Modul mit der Halle (Rollen, Einstellungsdatei, Sperre)
 # Daten: Einstellungen und Laufzeitdateien. Liegen außerhalb des Plugins, damit Updates sie nicht löschen.
 DATEN = Path(os.environ.get("FABRIK_DATEN", Path.home() / ".claude/fabrik"))
 LAGER_STANDARD = Path.home() / "Claude-Fabrik"
@@ -33,12 +39,15 @@ EINSTELLBAR = {
     "autor": "Name, den Arbeiter eintragen, wenn ein Autor nötig ist (leer: keinen eintragen)",
     "update_hinweis": "Hinweis auf neue Versionen: an (Standard) oder aus",
 }
+# Rückfall für `fabrik update`, falls halle/update.py nicht geladen werden kann (Schlüssel wie update.stand).
+UPDATE_RUECKFALL = {"installiert": None, "neueste": None, "update_verfuegbar": False,
+                    "befehl": "", "hinweis": "", "abgeschaltet": False}
 # Einstellungen mit fester Auswahl und ihr Standardwert.
 AUSWAHL = {"update_hinweis": (("an", "aus"), "an")}
 
-ROLLEN = ["spec", "builder", "sicherheit", "designer", "inspector", "bediener", "approver"]
-# Nur Prüfer lassen sich abschalten; Spec, Builder und Approver braucht jeder Auftrag.
-SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"]
+# Rollen und abschaltbare Prüfer stehen nur in halle/arbeiter.py.
+ROLLEN = arbeiter.ROLLEN
+SCHALTBAR = arbeiter.SCHALTBAR
 STATIONEN = ["eingang", "spec", "bau", "pruefung", "freigabe", "fertig"]
 STATUS = ["aktiv", "pausiert", "eskaliert", "fertig", "abgebrochen"]
 ID_MUSTER = re.compile(r"^F-\d{4}$")
@@ -66,39 +75,30 @@ __pycache__/
 
 def arbeiter_modul():
     """Gemeinsames Modul mit der Halle: Arbeiter-Einstellungen, Sperre und Lesen/Schreiben von einstellungen.json."""
-    halle = str(WERK / "halle")
-    if halle not in sys.path:
-        sys.path.insert(0, halle)
-    import arbeiter
     return arbeiter
 
 
 def lies_einstellungen():
-    """Liest einstellungen.json. Fehlt sie oder ist sie kein JSON-Objekt, gilt sie als leer."""
-    d = arbeiter_modul()._lies_alles(DATEN)
-    deaktiviert = d.get("deaktiviert")
-    if not isinstance(deaktiviert, list):
-        deaktiviert = []
-    d["deaktiviert"] = [r for r in deaktiviert if isinstance(r, str) and r in SCHALTBAR]
-    return d
+    """Liest einstellungen.json so, wie sie ist. Fehlt sie oder ist sie beschädigt, gilt sie als leer.
+    Abgeschaltete Prüfer liefert `arbeiter.deaktivierte(d)`; dabei wird nichts ergänzt."""
+    return arbeiter._lies_alles(DATEN)
 
 
 @contextmanager
 def einstellungen_aendern():
     """Liest die Einstellungen unter der gemeinsamen Sperre (wie Halle und `fabrik arbeiter`),
     übergibt sie zum Ändern und speichert sie danach unter derselben Sperre."""
-    am = arbeiter_modul()
-    with am._sperre(DATEN):
+    with arbeiter._sperre(DATEN):
         d = lies_einstellungen()
         yield d
-        am._schreibe_alles(DATEN, d)
+        arbeiter._schreibe_alles(DATEN, d)
 
 
 def lager_ermitteln():
     if os.environ.get("FABRIK_LAGER"):
         return Path(os.environ["FABRIK_LAGER"]).expanduser()
     eintrag = lies_einstellungen().get("lager")
-    return Path(eintrag).expanduser() if eintrag else LAGER_STANDARD
+    return Path(eintrag).expanduser() if isinstance(eintrag, str) and eintrag.strip() else LAGER_STANDARD
 
 
 LAGER = lager_ermitteln()
@@ -174,7 +174,7 @@ def wert(text):
 
 def cmd_rollen(a):
     """Zeigt, welche Prüfer aktiv und welche abgeschaltet sind (JSON)."""
-    aus = lies_einstellungen()["deaktiviert"]
+    aus = arbeiter.deaktivierte(lies_einstellungen())
     print(json.dumps({"aktiv": [r for r in SCHALTBAR if r not in aus], "deaktiviert": aus}, ensure_ascii=False))
 
 
@@ -183,7 +183,7 @@ def cmd_rolle(a):
     if a.rolle not in SCHALTBAR:
         fehler(f"Nur diese Prüfer lassen sich schalten: {', '.join(SCHALTBAR)}")
     with einstellungen_aendern() as d:
-        aus = [r for r in d["deaktiviert"] if r != a.rolle]
+        aus = [r for r in arbeiter.deaktivierte(d) if r != a.rolle]
         if a.zustand == "aus":
             aus.append(a.rolle)
         d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
@@ -197,7 +197,7 @@ def cmd_einstellung(a):
         stand = {k: d.get(k, AUSWAHL[k][1] if k in AUSWAHL else "") for k in EINSTELLBAR}
         stand["lager"] = str(LAGER)
         stand["eingerichtet"] = bool(d.get("eingerichtet"))
-        stand["deaktiviert"] = d["deaktiviert"]
+        stand["deaktiviert"] = arbeiter.deaktivierte(d)
         stand["daten"] = str(DATEN)
         stand["autostart"] = AUTOSTART_PLIST.exists()
         print(json.dumps(stand, ensure_ascii=False, indent=2))
@@ -232,11 +232,16 @@ def cmd_einstellung(a):
 def cmd_update(a):
     """Zeigt installierte und neueste Version (JSON). Fragt höchstens alle 6 Stunden bei GitHub nach."""
     try:
-        sys.path.insert(0, str(WERK / "halle"))
         import update
-        stand = update.stand(DATEN)
     except Exception:  # noqa: BLE001 - der Hinweis darf `/fabrik` nie aufhalten
-        stand = {"installiert": None, "neueste": None, "update_verfuegbar": False, "befehl": ""}
+        update = None
+    try:
+        stand = update.stand(DATEN)
+    except Exception:  # noqa: BLE001
+        stand = None
+    if not isinstance(stand, dict):
+        # Gleiches Schema wie update.stand, auch wenn das Modul fehlt oder scheitert.
+        stand = update.leerer_stand() if update else UPDATE_RUECKFALL
     print(json.dumps(stand, ensure_ascii=False))
 
 

@@ -1,6 +1,6 @@
 """Tests für Modell und Effort je Arbeiter: Speichern, Standard, Kommandozeile und Halle.
 
-Start: python3 -m unittest discover -s tests
+Start: python3 -B -m unittest discover -s tests
 """
 import importlib.util
 import json
@@ -14,6 +14,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from unittest import mock
+
+# Beim Laden der Plugin-Module keine __pycache__-Ordner im Plugin anlegen.
+sys.dont_write_bytecode = True
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugins/fabrik"
 WERKZEUG = PLUGIN / "bin/fabrik"

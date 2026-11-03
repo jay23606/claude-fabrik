@@ -29,10 +29,10 @@ Phasen des Projekts Claude Fabrik. Fertige Features sind abgehakt, offene stehen
 
 ## Phase 5: Korrekturen aus den Prüfungen
 
-- [ ] Einstellungen im CLI unter derselben Sperre schreiben (#25)
-- [ ] Beschädigte Einstellungsdatei führt nicht mehr zum Absturz (#26)
-- [ ] Effort-Liste je Modell pflegen oder Filter streichen (#27)
-- [ ] Einstellungen in `aufruf` nur einmal lesen (#28)
-- [ ] Spec: AK-7 auf aktuelle Version und Abnahmekriterien für Modell und Effort (#29)
+- [x] Einstellungen im CLI unter derselben Sperre schreiben (#25)
+- [x] Beschädigte Einstellungsdatei führt nicht mehr zum Absturz (#26)
+- [x] Effort-Liste je Modell pflegen oder Filter streichen (#27)
+- [x] Einstellungen in `aufruf` nur einmal lesen (#28)
+- [x] Spec: AK-7 auf aktuelle Version und Abnahmekriterien für Modell und Effort (#29)
 - [ ] Farbiger linker Rahmen an `.alarm` entfernt (#30)
 - [ ] Update-Banner: Schließen-Knopf, Überlappung, Kopier-Rückmeldung, Browserprüfung (#19, #21, #24, #31)

@@ -18,16 +18,14 @@ from pathlib import Path
 WERK = Path(__file__).resolve().parent.parent
 AGENTEN = WERK / "agents"
 
+# Die einzige Liste der Rollen und Prüfer: Werkzeug fabrik und Halle lesen sie von hier.
 ROLLEN = ["spec", "builder", "sicherheit", "designer", "inspector", "bediener", "approver"]
+# Nur Prüfer lassen sich abschalten; Spec, Builder und Approver braucht jeder Auftrag.
+SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"]
 # Werte, die das Agent-Werkzeug von Claude Code für `model` und `effort` annimmt.
+# Jede Effort-Stufe ist mit jedem Modell wählbar; ob ein Modell sie nutzt, entscheidet Claude Code.
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
-# Je Modell die Effort-Stufen, die es unterstützt.
-MODELLE = {
-    "fable": EFFORTS,
-    "opus": EFFORTS,
-    "sonnet": EFFORTS,
-    "haiku": EFFORTS,
-}
+MODELLE = ["fable", "opus", "sonnet", "haiku"]
 MODELL_NAMEN = {"fable": "Fable", "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku"}
 EFFORT_NAMEN = {"low": "niedrig", "medium": "mittel", "high": "hoch", "xhigh": "sehr hoch", "max": "max"}
 # Deutsche Eingaben auf der Kommandozeile sind ebenfalls erlaubt.
@@ -39,7 +37,7 @@ FELDER = ("modell", "effort")
 
 
 class Ungueltig(ValueError):
-    """Unbekannte Rolle, unbekanntes Feld oder Wert, den das Modell nicht kennt."""
+    """Unbekannte Rolle, unbekanntes Feld oder unbekannter Wert."""
 
 
 def einstellungen_datei(daten):
@@ -58,17 +56,27 @@ def _sperre(daten):
 
 
 def _lies_alles(daten):
+    """Ganze Einstellungsdatei. Fehlt sie oder ist sie beschädigt (kein UTF-8, kein JSON,
+    kein Objekt), gilt sie als leer."""
     try:
-        d = json.loads(einstellungen_datei(daten).read_text())
-    except (OSError, json.JSONDecodeError):
+        d = json.loads(einstellungen_datei(daten).read_text(encoding="utf-8"))
+    except (OSError, ValueError):  # ValueError umfasst UnicodeDecodeError und JSONDecodeError
         return {}
     return d if isinstance(d, dict) else {}
+
+
+def deaktivierte(d):
+    """Abgeschaltete Prüfer aus den Einstellungen, nur gültige Einträge in fester Reihenfolge."""
+    liste = d.get("deaktiviert") if isinstance(d, dict) else None
+    if not isinstance(liste, list):
+        return []
+    return [r for r in SCHALTBAR if r in liste]
 
 
 def _schreibe_alles(daten, d):
     datei = einstellungen_datei(daten)
     tmp = datei.with_name(f".einstellungen.{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, datei)
 
 
@@ -91,9 +99,11 @@ def normalisiere(feld, wert):
     raise Ungueltig(f"Feld muss {' oder '.join(FELDER)} sein")
 
 
-def eigene(daten):
-    """Gespeicherte Auswahl je Rolle, nur gültige Einträge: {rolle: {"modell": …, "effort": …}}."""
-    roh = _lies_alles(daten).get("arbeiter")
+def eigene(daten=None, d=None):
+    """Gespeicherte Auswahl je Rolle, nur gültige Einträge: {rolle: {"modell": …, "effort": …}}.
+
+    Mit `d` werden bereits gelesene Einstellungen ausgewertet, sonst wird die Datei gelesen."""
+    roh = (_lies_alles(daten) if d is None else d).get("arbeiter")
     ergebnis = {}
     if not isinstance(roh, dict):
         return ergebnis
@@ -138,27 +148,23 @@ def stand(daten, agenten=None):
     for rolle in ROLLEN:
         std = definition(rolle, agenten)
         eigen = gespeichert.get(rolle, {})
-        modell = eigen.get("modell") or std["modell"]
-        effort = eigen.get("effort")
-        # Passt der Standard-Effort nicht zum gewählten Modell, entfällt er.
-        if not effort and std["effort"] and modell and std["effort"] in MODELLE.get(modell, ()):
-            effort = std["effort"]
         ergebnis[rolle] = {
             "modell": eigen.get("modell"),
             "effort": eigen.get("effort"),
             "standard_modell": std["modell"],
             "standard_effort": std["effort"],
-            "gilt_modell": modell,
-            "gilt_effort": effort,
+            "gilt_modell": eigen.get("modell") or std["modell"],
+            "gilt_effort": eigen.get("effort") or std["effort"],
         }
     return ergebnis
 
 
 def aufruf(daten):
     """Parameter für den Agent-Aufruf je Rolle: nur gesetzte Werte, sonst leer (dann gilt die Definition)."""
+    gespeichert = eigene(daten)  # einmal lesen, nicht je Rolle
     ergebnis = {}
     for rolle in ROLLEN:
-        eigen = eigene(daten).get(rolle, {})
+        eigen = gespeichert.get(rolle, {})
         parameter = {}
         if eigen.get("modell"):
             parameter["model"] = eigen["modell"]
@@ -186,12 +192,6 @@ def setze(daten, rolle, feld, wert, agenten=None):
             eigen.pop(feld, None)
         else:
             eigen[feld] = w
-        # Effort muss zum Modell passen, das dann gilt.
-        modell = eigen.get("modell") or definition(rolle, agenten)["modell"]
-        if eigen.get("effort") and modell and eigen["effort"] not in MODELLE.get(modell, ()):
-            if feld == "effort":
-                raise Ungueltig(f"{MODELL_NAMEN[modell]} unterstützt Effort {eigen['effort']} nicht")
-            eigen.pop("effort")
         if eigen:
             alle[rolle] = eigen
         else:
@@ -207,6 +207,6 @@ def setze(daten, rolle, feld, wert, agenten=None):
 def auswahl():
     """Mögliche Werte für Oberfläche und Hilfe."""
     return {
-        "modelle": [{"wert": m, "name": MODELL_NAMEN[m], "efforts": list(e)} for m, e in MODELLE.items()],
+        "modelle": [{"wert": m, "name": MODELL_NAMEN[m]} for m in MODELLE],
         "efforts": [{"wert": e, "name": EFFORT_NAMEN[e]} for e in EFFORTS],
     }

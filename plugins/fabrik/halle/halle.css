@@ -10,6 +10,9 @@
   --sonnet: #4fa8e0;
   --rot: #e5484d;
   --gruen: #3fb950;
+  /* Dunkleres Grün und Rot für Text und Flächen auf hellem Grund (Kontrast mind. 4,5:1). */
+  --gruen-dunkel: #1d6b2e;
+  --rot-dunkel: #a01e23;
   --gelb: #f5c542;
   --kreide: #f1efe6;
   --schrift: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -24,29 +27,46 @@ body {
   color: var(--kreide);
   font-family: var(--schrift);
   overflow: hidden;
+  /* Kopfleiste oben, die Halle füllt den Rest. */
+  display: flex;
+  flex-direction: column;
 }
 
 .halle-rahmen {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 #halle { width: 100%; height: 100%; display: block; }
 
+/* Nur für Screenreader sichtbar */
+.nur-vorlesen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.kopfleiste { flex: none; display: flex; flex-direction: column; }
 .verbindung {
-  position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
   margin: 0;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: var(--rot);
+  padding: 10px 16px;
+  background: var(--rot-dunkel);
   color: #fff;
   font-size: 14px;
+  font-weight: 600;
+  text-align: center;
 }
+/* Leer heißt verbunden; das Element bleibt im Dokument, damit neue Texte angesagt werden. */
+.verbindung:empty { display: none; }
 
 /* --- Szene -------------------------------------------------------------- */
 .kreide { font-family: var(--kreideschrift); fill: var(--kreide); }
@@ -61,7 +81,7 @@ body {
 @keyframes drehen { to { transform: rotate(360deg); } }
 
 .tafel-zahl { cursor: pointer; }
-.tafel-zahl:hover .tafel-feld, .tafel-zahl:focus-visible .tafel-feld { stroke: var(--kreide); stroke-opacity: .7; }
+.tafel-zahl:hover .tafel-feld { stroke: var(--kreide); stroke-opacity: .7; }
 .tafel-zahl:focus { outline: none; }
 .tafel-feld { fill: transparent; stroke: transparent; stroke-width: 2; stroke-dasharray: 6 5; }
 .tafel-zahl.gewaehlt .tafel-feld { stroke: var(--gelb); stroke-opacity: 1; stroke-dasharray: none; }
@@ -97,7 +117,9 @@ body {
 @keyframes plumps { 0% { transform: translateY(-60px); opacity: 0; } 70% { transform: translateY(4px); } 100% { transform: none; opacity: 1; } }
 .paket.unterwegs .paket-innen { animation: ruckeln .35s ease-in-out 4; }
 @keyframes ruckeln { 50% { transform: translateY(-3px) rotate(-1.5deg); } }
-.paket .leuchte { opacity: 0; }
+.paket .leuchte, .paket .esk-zeichen { opacity: 0; }
+/* Ausrufezeichen auf der Leuchte blinkt nicht mit: Eskalation bleibt auch ohne Bewegung erkennbar. */
+.paket.eskaliert .esk-zeichen { opacity: 1; }
 .paket.eskaliert .leuchte { opacity: 1; animation: blinken .9s steps(2, jump-none) infinite; }
 .paket.eskaliert .paket-kiste { fill: var(--rot); }
 .paket.eskaliert .paket-band { fill: #a8262b; }
@@ -198,7 +220,8 @@ body {
   text-align: left;
 }
 .kopieren:hover, .kopieren:focus-visible { background: #000; }
-.kopieren.ok { background: var(--gruen); border-color: var(--gruen); }
+.kopieren.ok { background: var(--gruen-dunkel); border-color: var(--gruen-dunkel); }
+.kopieren.fehlgeschlagen { background: var(--rot-dunkel); border-color: var(--rot-dunkel); }
 .karte-inhalt { overflow-y: auto; overflow-x: hidden; overflow-wrap: anywhere; padding: 6px 20px 40px; font-size: 14px; line-height: 1.5; }
 .karte-inhalt h3 {
   margin: 20px 0 8px;
@@ -221,7 +244,7 @@ body {
 .chip.pausiert, .chip.abgebrochen { background: #e1ddd3; color: #555; }
 
 .schritte { display: flex; gap: 4px; margin: 14px 0 4px; }
-.schritt { flex: 1; text-align: center; font-size: 11px; color: var(--karte-leise); }
+.schritt { flex: 1; text-align: center; font-size: 12px; color: var(--karte-leise); }
 .schritt::before { content: ""; display: block; height: 6px; border-radius: 3px; margin-bottom: 5px; background: #e2dccd; }
 .schritt.erledigt::before { background: #9bc9a4; }
 .schritt.jetzt { color: var(--karte-text); font-weight: 700; }
@@ -231,23 +254,24 @@ body {
 .eckdaten { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
 .eckdaten div { background: #fff; border: 1px solid var(--linie); border-radius: 10px; padding: 8px 10px; }
 .eckdaten b { display: block; font-size: 18px; }
-.eckdaten span { font-size: 11px; color: var(--karte-leise); }
+.eckdaten span { font-size: 12px; color: var(--karte-leise); }
 
-.alarm { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: #fde8e8; border-left: 5px solid var(--rot); }
-.alarm strong { color: #a01e23; }
+.alarm { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: #fde8e8; border: 1px solid #f0b3b5; }
+.alarm strong { color: var(--rot-dunkel); }
 
 .liste { list-style: none; margin: 0; padding: 0; }
 .liste li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid #eee8da; }
 .liste li:last-child { border-bottom: 0; }
 .haken { flex: none; width: 20px; text-align: center; font-weight: 800; }
-.haken.ja { color: var(--gruen); }
-.haken.nein { color: var(--rot); }
-.haken.offen { color: #b5ad9b; }
+/* Zustand steckt im Zeichen (✓ ✗ ○) und im vorgelesenen Text, die Farbe ist nur Zugabe. */
+.haken.ja { color: var(--gruen-dunkel); }
+.haken.nein { color: var(--rot-dunkel); }
+.haken.offen { color: #6e6858; }
 .leer { color: var(--karte-leise); font-style: italic; }
 
 table.befunde { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.befunde th, table.befunde td { padding: 5px 6px; text-align: left; border-bottom: 1px solid #eee8da; }
-table.befunde th { font-size: 11px; color: var(--karte-leise); font-weight: 600; }
+table.befunde th { font-size: 12px; color: var(--karte-leise); font-weight: 600; }
 .b-zahl { font-weight: 800; color: var(--rot); }
 .k-zahl { color: var(--karte-leise); }
 
@@ -266,7 +290,7 @@ summary { padding: 9px 12px; cursor: pointer; font-weight: 600; min-height: 44px
 .verlauf li::before { content: ""; position: absolute; left: -20px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: #c9c1ae; }
 .verlauf li.eskaliert::before { background: var(--rot); }
 .verlauf li.fertig::before, .verlauf li.commit::before { background: var(--gruen); }
-.verlauf time { color: var(--karte-leise); font-size: 11px; font-family: var(--mono); margin-right: 6px; }
+.verlauf time { color: var(--karte-leise); font-size: 12px; font-family: var(--mono); margin-right: 6px; }
 .pfad { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--karte-leise); }
 
 /* Schmale Bildschirme: Halle nicht mehr einpassen, sondern in Mindestgröße
@@ -293,17 +317,29 @@ summary { padding: 9px 12px; cursor: pointer; font-weight: 600; min-height: 44px
 .werkstatt-kopf { cursor: pointer; }
 .werkstatt-kopf:focus { outline: none; }
 .werkstatt-flaeche { fill: transparent; stroke: transparent; stroke-width: 2; stroke-dasharray: 6 5; }
-.werkstatt-kopf:hover .werkstatt-flaeche, .werkstatt-kopf:focus-visible .werkstatt-flaeche { stroke: #aab1c2; stroke-opacity: .6; }
+.werkstatt-kopf:hover .werkstatt-flaeche { stroke: #aab1c2; stroke-opacity: .6; }
 .bank.klickbar { cursor: pointer; }
-.bank.klickbar:focus { outline: none; }
+.bank:focus { outline: none; }
 .bank-flaeche { stroke: transparent; stroke-width: 2; stroke-dasharray: 6 5; }
-.bank.klickbar:hover .bank-flaeche, .bank.klickbar:focus-visible .bank-flaeche { stroke: var(--gelb); stroke-opacity: .7; }
+.bank.klickbar:hover .bank-flaeche { stroke: var(--gelb); stroke-opacity: .7; }
 
 /* Laufzeiten auf der Tafel */
 .tafel-paket { cursor: pointer; }
 .tafel-paket:focus { outline: none; }
 .tafel-paket-feld { fill: transparent; stroke: transparent; stroke-width: 1.5; stroke-dasharray: 4 4; }
-.tafel-paket:hover .tafel-paket-feld, .tafel-paket:focus-visible .tafel-paket-feld { stroke: var(--kreide); stroke-opacity: .7; }
+.tafel-paket:hover .tafel-paket-feld { stroke: var(--kreide); stroke-opacity: .7; }
+
+/* Tastaturfokus in der Szene: durchgezogener gelber Rahmen, 3 px */
+.tafel-zahl:focus-visible .tafel-feld,
+.werkstatt-kopf:focus-visible .werkstatt-flaeche,
+.bank:focus-visible .bank-flaeche,
+.tafel-paket:focus-visible .tafel-paket-feld,
+.arbeiter.klickbar:focus-visible .arbeiter-flaeche {
+  stroke: var(--gelb);
+  stroke-opacity: 1;
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
 
 /* Infokarte einer Sitzung */
 .kopieren.klein { display: block; width: 100%; margin: 6px 0; font-size: 12.5px; overflow-wrap: anywhere; }
@@ -314,7 +350,6 @@ summary { padding: 9px 12px; cursor: pointer; font-weight: 600; min-height: 44px
 .arbeiter.klickbar:focus { outline: none; }
 .arbeiter-flaeche { stroke: transparent; stroke-width: 3; stroke-dasharray: 6 5; }
 .arbeiter.klickbar:hover .arbeiter-flaeche { stroke: var(--gelb); stroke-opacity: .8; }
-.arbeiter.klickbar:focus-visible .arbeiter-flaeche { stroke: var(--gelb); stroke-opacity: 1; stroke-dasharray: none; }
 .band-modell { paint-order: stroke; stroke: #1b1f27; stroke-width: 3px; stroke-linejoin: round; }
 .arbeiter .aus-schild { opacity: 0; transition: opacity .3s; }
 .arbeiter.aus { opacity: .5; }
@@ -324,33 +359,30 @@ summary { padding: 9px 12px; cursor: pointer; font-weight: 600; min-height: 44px
 .arbeiter.aus .arm, .arbeiter.aus .koerper { animation: none; }
 
 /* --- Update-Hinweis ------------------------------------------------------ */
+/* Schmale Leiste über der Halle: bricht bei Bedarf um und schiebt die Halle nach unten, statt sie zu verdecken. */
 .update-banner {
-  position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 15;
-  width: min(460px, calc(100vw - 24px));
-  padding: 12px 48px 10px 16px;
-  border: 1px solid #4a5369;
-  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 6px 8px 6px 16px;
+  border-bottom: 1px solid #4a5369;
   background: #262d3c;
   color: var(--kreide);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
   font-size: 14px;
 }
 .update-banner[hidden] { display: none; }
-.update-text { margin: 0 0 4px; }
+.update-text, .update-nachsatz { margin: 0; }
 .update-text strong { color: var(--gelb); }
 .update-text span, .update-nachsatz { color: #c3c9d6; }
-.update-nachsatz { margin: 2px 0 0; font-size: 13px; }
-.update-befehl { margin: 6px 0; }
+.update-nachsatz { font-size: 13px; }
+.kopieren.klein.update-befehl { display: inline-block; width: auto; max-width: 100%; margin: 0; }
 .update-befehl:focus-visible, .update-zu:focus-visible { outline: 3px solid var(--gelb); outline-offset: 2px; }
 .update-zu {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 36px;
-  height: 36px;
+  flex: none;
+  margin-left: auto;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -402,4 +434,15 @@ summary { padding: 9px 12px; cursor: pointer; font-weight: 600; min-height: 44px
 .schalter.an .schalter-knopf::after { transform: translateX(18px); }
 .meldung { min-height: 1.5em; margin: 10px 0; font-weight: 600; }
 .meldung.ok { color: #1d6b2e; }
-.meldung.fehler, .karte-inhalt .fehler { color: #a01e23; }
+.meldung.fehler, .karte-inhalt .fehler { color: var(--rot-dunkel); }
+.erneut {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--karte-text);
+  font: inherit;
+  cursor: pointer;
+}
+.erneut:focus-visible { outline: 3px solid #0b4a80; outline-offset: 2px; }

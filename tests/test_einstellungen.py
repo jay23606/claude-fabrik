@@ -1,6 +1,6 @@
 """Tests für einstellungen.json: gleichzeitiges Schreiben (Issue #25) und beschädigte Datei (Issue #26).
 
-Start: python3 -m unittest discover -s tests
+Start: python3 -B -m unittest discover -s tests
 """
 import importlib.util
 import json
@@ -12,6 +12,9 @@ import threading
 import unittest
 from pathlib import Path
 from unittest import mock
+
+# Beim Laden der Plugin-Module keine __pycache__-Ordner im Plugin anlegen.
+sys.dont_write_bytecode = True
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugins/fabrik"
 WERKZEUG = PLUGIN / "bin/fabrik"
