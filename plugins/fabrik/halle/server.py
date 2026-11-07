@@ -5,23 +5,36 @@ Bindet nur an 127.0.0.1 und liest ausschließlich: Lager, Sitzungsdateien
 und unter ~/.claude/projects die Projektordner sowie das Ende einzelner
 Transkripte (für die Infokarte einer Sitzung und den Projektnamen von Sitzungen
 im Benutzer- oder Temp-Ordner; dafür wird bei geschriebenen Dateien auch nach
-einem .git-Ordner und im Lager nach status.json geschaut). Einzige schreibende Aktion: Prüfer in den Einstellungen (einstellungen.json)
-an- oder abschalten (POST /api/rolle, nur vom eigenen Ursprung).
+einem .git-Ordner und im Lager nach status.json geschaut). Schreibende Aktionen,
+nur vom eigenen Ursprung und nur in die Einstellungen (einstellungen.json):
+Prüfer an- oder abschalten (POST /api/rolle) sowie Modell und Effort eines
+Arbeiters wählen (POST /api/arbeiter).
+
+Nach außen geht nur die Update-Abfrage (neuestes Release auf GitHub), im
+Hintergrund und höchstens alle 6 Stunden; sie pflegt update.json im Datenordner.
 """
-import argparse
-import json
-import os
-import re
-import signal
-import socketserver
-import tempfile
-import threading
-import time
-from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+import sys
+
+# Keine __pycache__-Ordner im Plugin anlegen (halle/ wird bei Updates ersetzt).
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import signal  # noqa: E402
+import socketserver  # noqa: E402
+import tempfile  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 HIER = Path(__file__).resolve().parent
+sys.path.insert(0, str(HIER))
+import update  # noqa: E402 - liegt neben dieser Datei
+import arbeiter  # noqa: E402 - liegt neben dieser Datei
 # Lager und Datenordner gibt das Werkzeug fabrik beim Start mit.
 LAGER = Path(os.environ.get("FABRIK_LAGER", Path.home() / "Claude-Fabrik"))
 DATEN = Path(os.environ.get("FABRIK_DATEN", Path.home() / ".claude/fabrik"))
@@ -29,23 +42,32 @@ CLAUDE = Path.home() / ".claude"
 ID_MUSTER = re.compile(r"^F-\d{4}$")
 SITZUNG_MUSTER = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SCHREIB_WERKZEUGE = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-EINSTELLUNGEN = DATEN / "einstellungen.json"
-# Nur Prüfer lassen sich abschalten (gleiche Liste wie im Werkzeug fabrik).
-SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"]
+# Nur Prüfer lassen sich abschalten; die Liste steht in arbeiter.py.
+SCHALTBAR = arbeiter.SCHALTBAR
+# Größter angenommener Körper einer POST-Anfrage (Bytes).
+MAX_KOERPER = 1024
 DATEIEN = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/halle.css": ("halle.css", "text/css; charset=utf-8"),
     "/halle.js": ("halle.js", "text/javascript; charset=utf-8"),
 }
 RUHT_AB_MIN = 60
+# Wie oft der Hintergrund nachsieht; ob wirklich im Netz gefragt wird, entscheidet der 6-Stunden-Zwischenspeicher.
+UPDATE_TAKT_S = 30 * 60
 ZULETZT_TAGE = 7
+# Platzhalter, wenn eine Sitzung weder ein Projekt noch einen Titel verrät.
 BENUTZERORDNER = "~ (Benutzerordner)"
-# Ordner, in denen Sitzungen ohne eigenes Projekt laufen (Temp-Ordner).
+TEMP_PLATZHALTER = "Temp-Ordner"
+# Ordner, in denen Sitzungen ohne eigenes Projekt laufen: Temp-Ordner und die
+# Arbeitsordner der Claude-App für Sitzungen ohne Projekt (scratch-workspaces).
 TEMP_ORDNER = [Path(p) for p in ("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")]
 try:
     TEMP_ORDNER.append(Path(tempfile.gettempdir()).resolve())
 except OSError:
     pass
+TEMP_ORDNER.append(Path.home() / "Library/Application Support/Claude/scratch-workspaces")
+# Entfernte oder eingehängte Laufwerke: dort wird nicht nach .git gesucht, das kann hängen.
+FREMDE_LAUFWERKE = [Path(p) for p in ("/Volumes", "/net", "/Network", "/mnt", "/media")]
 # Projektname je Transkript, gültig solange Größe und mtime gleich bleiben.
 NAMEN_CACHE = {}
 NAMEN_SPERRE = threading.Lock()
@@ -79,7 +101,7 @@ def auftraege():
         except (OSError, json.JSONDecodeError):
             continue
         fab = datei.parent
-        todos_offen, todos_erledigt = zaehle_haken(lies(fab / "todos.md"))
+        todos_offen, todos_erledigt = zaehle_haken(lies(fab.parent / "todos.md"))
         backlog_offen, _ = zaehle_haken(lies(fab / "backlog.md"))
         kriterien = s.get("kriterien", [])
         ruht = minuten_seit(s.get("aktualisiert"))
@@ -138,6 +160,14 @@ def ohne_projekt(cwd):
     return p == Path.home() or any(liegt_unter(p, t) for t in TEMP_ORDNER)
 
 
+def platzhalter(cwd=None, ordnername=None):
+    """Platzhalter für Sitzungen ohne Projekt und Titel: im Benutzerordner „~ (Benutzerordner)“,
+    in Temp- und Arbeitsordnern „Temp-Ordner“."""
+    if cwd is not None:
+        return BENUTZERORDNER if Path(cwd) == Path.home() else TEMP_PLATZHALTER
+    return BENUTZERORDNER if ordnername == kodiert(Path.home()) else TEMP_PLATZHALTER
+
+
 def ohne_projekt_kodiert(ordnername):
     """Wie ohne_projekt, aber für die kodierten Ordnernamen unter ~/.claude/projects."""
     if ordnername == kodiert(Path.home()):
@@ -149,13 +179,16 @@ def projekt_von_datei(datei):
     """Projektname zu einer geschriebenen Datei oder None, wenn sie zu keinem Projekt gehört."""
     try:
         p = Path(datei).expanduser()
+        if not p.is_absolute():
+            return None
+        # Erst normalisieren, damit „..“ die Prüfungen unten nicht umgeht.
+        p = Path(os.path.normpath(str(p)))
     except (TypeError, ValueError):
         return None
-    if not p.is_absolute():
-        return None
     home = Path.home()
-    # Dateien in ~/.claude (Gedächtnis, Pläne) und in Temp-Ordnern gehören zu keinem Projekt.
-    if liegt_unter(p, CLAUDE) or any(liegt_unter(p, t) for t in TEMP_ORDNER):
+    # Dateien in ~/.claude (Gedächtnis, Pläne) und in Temp-Ordnern gehören zu keinem Projekt,
+    # auf fremden Laufwerken wird nicht gesucht.
+    if liegt_unter(p, CLAUDE) or any(liegt_unter(p, t) for t in TEMP_ORDNER + FREMDE_LAUFWERKE):
         return None
     # 1. Fabrik-Auftrag im Lager: Titel aus status.json
     if liegt_unter(p, LAGER):
@@ -250,7 +283,7 @@ def anzeigename(cwd, transkript=None):
     """Name für die Anzeige und ob er nur ein Platzhalter ist (dann dezent darstellen)."""
     if ohne_projekt(cwd):
         name = projekt_aus_transkript(transkript) if transkript else None
-        return (name, False) if name else (BENUTZERORDNER, True)
+        return (name, False) if name else (platzhalter(cwd=cwd), True)
     return Path(cwd).name, False
 
 
@@ -302,7 +335,7 @@ def sitzungen():
             # Benutzer- oder Temp-Ordner: Name aus der neuesten nicht laufenden Sitzung.
             name = projekt_aus_transkript(neueste)
             if not name:
-                name, dezent = BENUTZERORDNER, True
+                name, dezent = platzhalter(ordnername=ordner.name), True
         else:
             if ordner.name in gesehen_kodiert:
                 continue
@@ -420,26 +453,25 @@ def sitzung_details(sid):
 
 
 def rollen_aus():
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        return []
-    return [r for r in d.get("deaktiviert", []) if r in SCHALTBAR]
+    # _lies_alles liefert bei fehlender, kaputter oder nicht-objektförmiger Datei {}.
+    return arbeiter.deaktivierte(arbeiter._lies_alles(DATEN))
 
 
 def setze_rolle(rolle, aktiv):
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        d = {}
-    aus = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR and r != rolle]
-    if not aktiv:
-        aus.append(rolle)
-    d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
-    tmp = EINSTELLUNGEN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-    os.replace(tmp, EINSTELLUNGEN)
+    # Gleiche Sperre wie beim Speichern von Modell und Effort, damit sich beide nicht überschreiben.
+    with arbeiter._sperre(DATEN):
+        d = arbeiter._lies_alles(DATEN)
+        aus = [r for r in arbeiter.deaktivierte(d) if r != rolle]
+        if not aktiv:
+            aus.append(rolle)
+        d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
+        arbeiter._schreibe_alles(DATEN, d)
     return d["deaktiviert"]
+
+
+def arbeiter_stand():
+    """Modell und Effort je Arbeiter samt Auswahl für die Halle. Liest die Einstellungen bei jeder Abfrage neu."""
+    return {"stand": arbeiter.stand(DATEN), **arbeiter.auswahl()}
 
 
 def wach_aktiv():
@@ -468,12 +500,27 @@ def auftrag_details(aid):
     return {
         "status": status,
         "spec": lies(fab / "spec.md"),
-        "todos": lies(fab / "todos.md"),
+        "todos": lies(fab.parent / "todos.md"),
         "backlog": lies(fab / "backlog.md"),
         "freigabe": lies(fab / "freigabe.md"),
         "befunde": befunde,
         "verlauf": verlauf,
     }
+
+
+def update_stand():
+    """Update-Stand für die Seite. Liest nur den Zwischenspeicher, wartet also nie auf das Netz."""
+    return update.stand(DATEN, nur_cache=True)
+
+
+def update_im_hintergrund():
+    """Hält update.json aktuell, ohne die Halle aufzuhalten."""
+    while True:
+        try:
+            update.stand(DATEN)
+        except Exception:  # noqa: BLE001 - ohne Netz bleibt der Hinweis einfach aus
+            pass
+        time.sleep(UPDATE_TAKT_S)
 
 
 class Halle(BaseHTTPRequestHandler):
@@ -510,7 +557,10 @@ class Halle(BaseHTTPRequestHandler):
         if pfad == "/api/stand":
             return self.json({"auftraege": auftraege(), "sitzungen": sitzungen(), "wach": wach_aktiv(),
                               "rollen_aus": rollen_aus(), "schaltbar": SCHALTBAR,
+                              "arbeiter": arbeiter_stand(),
                               "lager": str(LAGER), "zeit": datetime.now(timezone.utc).isoformat()})
+        if pfad == "/api/update":
+            return self.json(update_stand())
         m = re.match(r"^/api/auftrag/([^/]+)$", pfad)
         if m and ID_MUSTER.match(m.group(1)):
             d = auftrag_details(m.group(1))
@@ -523,7 +573,7 @@ class Halle(BaseHTTPRequestHandler):
 
 
     def do_POST(self):
-        # Einzige schreibende Aktion: einen Prüfer an- oder abschalten.
+        # Schreibende Aktionen: Prüfer an- oder abschalten, Modell und Effort eines Arbeiters wählen.
         # Schutz vor fremden Webseiten: lokale Adresse, gleicher Ursprung, eigener Header und JSON.
         host = self.headers.get("Host", "")
         if host.split(":")[0] not in ("127.0.0.1", "localhost"):
@@ -532,17 +582,44 @@ class Halle(BaseHTTPRequestHandler):
         if self.headers.get("Origin") not in erlaubt or self.headers.get("X-Fabrik-Halle") != "1" \
                 or not (self.headers.get("Content-Type") or "").startswith("application/json"):
             return self.senden(403, "Nicht erlaubt", "text/plain; charset=utf-8")
-        if self.path.split("?")[0] != "/api/rolle":
+        pfad = self.path.split("?")[0]
+        if pfad not in ("/api/rolle", "/api/arbeiter"):
             return self.senden(404, "Nicht gefunden", "text/plain; charset=utf-8")
         try:
-            laenge = min(int(self.headers.get("Content-Length") or 0), 1024)
-            daten = json.loads(self.rfile.read(laenge) or b"{}")
-        except (ValueError, json.JSONDecodeError):
+            laenge = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
             return self.json({"fehler": "ungültig"}, 400)
+        # Negative Längen würden bis zum Verbindungsende lesen, zu große werden nicht angenommen.
+        if laenge < 0:
+            return self.json({"fehler": "ungültig"}, 400)
+        if laenge > MAX_KOERPER:
+            return self.json({"fehler": "zu groß"}, 413)
+        try:
+            daten = json.loads(self.rfile.read(laenge) or b"{}")
+        except ValueError:  # auch kaputtes UTF-8 und JSONDecodeError
+            return self.json({"fehler": "ungültig"}, 400)
+        if not isinstance(daten, dict):
+            return self.json({"fehler": "ungültig"}, 400)
+        if pfad == "/api/arbeiter":
+            return self.arbeiter_setzen(daten)
         rolle, aktiv = daten.get("rolle"), daten.get("aktiv")
         if rolle not in SCHALTBAR or not isinstance(aktiv, bool):
             return self.json({"fehler": "ungültig"}, 400)
-        return self.json({"rollen_aus": setze_rolle(rolle, aktiv)})
+        try:
+            return self.json({"rollen_aus": setze_rolle(rolle, aktiv)})
+        except OSError:
+            return self.json({"fehler": "Einstellung konnte nicht gespeichert werden"}, 500)
+
+    def arbeiter_setzen(self, daten):
+        """Erwartet {"rolle": …, "feld": "modell"|"effort", "wert": …}; "standard" setzt zurück."""
+        rolle, feld, wert = daten.get("rolle"), daten.get("feld"), daten.get("wert")
+        try:
+            stand = arbeiter.setze(DATEN, rolle, feld, wert)
+        except arbeiter.Ungueltig as e:
+            return self.json({"fehler": str(e)}, 400)
+        except OSError:
+            return self.json({"fehler": "Einstellung konnte nicht gespeichert werden"}, 500)
+        return self.json({"rolle": rolle, "stand": stand})
 
 
 class LokalerServer(ThreadingHTTPServer):
@@ -569,6 +646,7 @@ def main():
     if a.pid:
         Path(a.pid).write_text(str(os.getpid()))
     signal.signal(signal.SIGTERM, beenden)
+    threading.Thread(target=update_im_hintergrund, name="update", daemon=True).start()
     print(f"Fabrikhalle läuft auf http://127.0.0.1:{a.port}/ (Lager: {LAGER})", flush=True)
     try:
         server.serve_forever()

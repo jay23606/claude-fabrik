@@ -14,7 +14,7 @@ Wunsch → Spec → Bau → Prüfrunden (bis zu 3) → Freigabe → Commit
 - Nur **Blocker** gehen zurück an den Builder, Kleinigkeiten landen im Backlog.
 - Der **Approver** gibt frei oder eskaliert an dich, wenn es um Zahlungen, Sicherheit, Zugangsdaten oder offene Blocker geht. Ein eskalierter Auftrag steht rot in der Halle und wartet auf deine Entscheidung.
 - Commits gibt es erst nach der Freigabe. Gepusht wird nie automatisch.
-- Die **Fabrikhalle** zeigt im Browser, was gerade gebaut wird: Stationen, Arbeiter, Runden, Befunde und laufende Claude-Sitzungen. Sie läuft nur lokal auf `127.0.0.1:7333`.
+- Die **Fabrikhalle** zeigt im Browser, was gerade gebaut wird: Stationen, Arbeiter, Runden, Befunde und laufende Claude-Sitzungen. Sie läuft nur lokal auf `127.0.0.1:7333`. Sitzungen im Benutzerordner, in Temp-Ordnern oder in den Arbeitsordnern der Claude-App (`scratch-workspaces`) tragen den Namen des Projekts, an dem sie arbeiten; ohne erkennbares Projekt und ohne Titel steht dort „~ (Benutzerordner)“ oder „Temp-Ordner“.
 
 ## Voraussetzungen
 
@@ -66,21 +66,37 @@ fabrik einstellung lager ~/Projekte/Fabrik
 fabrik einstellung git_name "Max Muster"
 fabrik einstellung git_email "max@example.org"
 fabrik einstellung autor "Max Muster"
-fabrik rolle designer aus              # Prüfer ab- oder anschalten (auch per Klick in der Halle)
+fabrik rolle designer aus              # Prüfer ab- oder anschalten (auch in der Halle, Klick auf den Arbeiter)
+fabrik arbeiter builder modell sonnet  # Modell eines Arbeiters: fable, opus, sonnet, haiku oder standard
+fabrik arbeiter builder effort high    # Effort: low, medium, high, xhigh, max oder standard (auch niedrig, mittel, hoch)
+fabrik arbeiter builder                # Modell und Effort eines Arbeiters anzeigen
+fabrik modelle                         # Modell und Effort aller Arbeiter (JSON)
 fabrik autostart an|aus                # Anmeldedienst (macOS)
+fabrik einstellung update_hinweis aus  # Hinweis auf neue Versionen abschalten
+fabrik update                          # installierte und neueste Version (JSON)
 ```
 
 Einstellungen und Laufzeitdateien liegen in `~/.claude/fabrik/` (änderbar über die Umgebungsvariable `FABRIK_DATEN`), also außerhalb des Plugins. Updates lassen sie unberührt. Das Lager lässt sich auch mit `FABRIK_LAGER` überschreiben.
 
-Die Arbeiter laufen mit diesen Modellen: Spec, Builder, Sicherheit und Approver mit Opus; Inspector, Bediener und Designer mit Sonnet.
+## Modell und Effort der Arbeiter
+
+Standardmäßig laufen Spec, Builder, Sicherheit und Approver mit Opus, Inspector, Bediener und Designer mit Sonnet (so steht es in den Agent-Definitionen unter `plugins/fabrik/agents/`).
+
+Das lässt sich pro Arbeiter ändern: In der Halle auf einen Arbeiter klicken (oder ihn mit Tab ansteuern und Enter drücken) und Modell und Effort wählen. Jede Effort-Stufe lässt sich mit jedem Modell wählen; ob ein Modell sie nutzt, entscheidet Claude Code. Gespeichert wird sofort, die Halle bestätigt es oder nennt den Grund, warum es nicht ging. Am Band steht unter jedem Arbeiter, womit er startet. Ohne Halle geht dasselbe mit `fabrik arbeiter <rolle> modell|effort <wert>`; `standard` stellt den Wert aus der Agent-Definition wieder her.
+
+Die Auswahl liegt in `~/.claude/fabrik/einstellungen.json` und übersteht Updates. Kommandozeile und Halle schreiben diese Datei unter einer gemeinsamen Sperre; ist sie beschädigt (auch ungültiges UTF-8), gilt sie als leer. `/fabrik` liest sie vor jedem Start eines Arbeiters und gibt `model` und `effort` beim Aufruf mit.
 
 ## Updates
 
-Neue Versionen holen:
+Die Fabrik sieht höchstens alle 6 Stunden auf GitHub nach, ob es ein neueres Release gibt. Wenn ja, meldet `/fabrik` beim Start „Update <Version> verfügbar“, und die Halle zeigt oben eine schmale Leiste mit dem Befehl zum Kopieren; sie schiebt die Halle nach unten, statt sie zu verdecken, und lässt sich schließen. Ohne Netz erscheint nichts, und ein schon gefundenes Update bleibt angezeigt, auch wenn eine spätere Abfrage scheitert. Den Stand zeigt auch `fabrik update` (JSON), abschalten lässt sich der Hinweis mit `fabrik einstellung update_hinweis aus`.
+
+Neue Versionen holen, im Terminal:
 
 ```
-/plugin marketplace update claude-fabrik
+claude plugin marketplace update claude-fabrik && claude plugin update fabrik@claude-fabrik
 ```
+
+Danach Claude Code neu starten. In Claude Code geht auch `/plugin marketplace update claude-fabrik`.
 
 Automatisch geht es so: `/plugin` öffnen, unter **Marketplaces** `claude-fabrik` wählen und die automatische Aktualisierung einschalten. Claude Code prüft dann beim Start auf neue Versionen.
 
@@ -108,10 +124,12 @@ Zum Ausprobieren ohne Installation: `claude --plugin-dir ./plugins/fabrik`
 ## Tests
 
 ```
-python3 -m unittest discover -s tests
+python3 -B -m unittest discover -s tests
 ```
 
-Die Tests prüfen, wie die Halle Sitzungen im Benutzer- oder Temp-Ordner benennt. Sie brauchen nur Python 3.9 oder neuer.
+`-B` verhindert `__pycache__`-Ordner; das Werkzeug und die Halle legen selbst keine an.
+
+Die Tests prüfen, wie die Halle Sitzungen im Benutzer-, Temp- oder Arbeitsordner benennt, Modell und Effort der Arbeiter (Speichern, Standard, Kommandozeile, Halle), den Update-Hinweis (Versionsvergleich, Zwischenspeicher, Fehlerfall ohne Netz, Abschalten), die Einstellungsdatei (gleichzeitiges Schreiben unter einer Sperre, beschädigte, nicht-objektförmige oder nicht in UTF-8 lesbare Datei) und die Grenzen der schreibenden Anfragen an die Halle. Sie nutzen kein Netz und brauchen nur Python 3.9 oder neuer.
 
 ## Lizenz
 

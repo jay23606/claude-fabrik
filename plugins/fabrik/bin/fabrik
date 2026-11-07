@@ -4,27 +4,32 @@
 Alle Stationen melden ihren Fortschritt über dieses Skript, damit
 status.json immer gültig bleibt und die Halle den Stand anzeigen kann.
 """
-import argparse
-import fcntl
-import json
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import time
-import urllib.request
-import webbrowser
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from pathlib import Path
+
+# Keine __pycache__-Ordner im Plugin anlegen (bin/ und halle/ werden bei Updates ersetzt).
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import fcntl
+import json  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import shutil  # noqa: E402
+import signal  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
+import urllib.request  # noqa: E402
+import webbrowser  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 # Werk: der Plugin-Ordner (Skripte, Halle). Wird bei jedem Update ersetzt.
 WERK = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(WERK / "halle"))
+import arbeiter  # noqa: E402 - gemeinsames Modul mit der Halle (Rollen, Einstellungsdatei, Sperre)
 # Daten: Einstellungen und Laufzeitdateien. Liegen außerhalb des Plugins, damit Updates sie nicht löschen.
 DATEN = Path(os.environ.get("FABRIK_DATEN", Path.home() / ".claude/fabrik"))
-EINSTELLUNGEN = DATEN / "einstellungen.json"
 LAGER_STANDARD = Path.home() / "Claude-Fabrik"
 # Diese Einstellungen lassen sich mit `fabrik einstellung <name> <wert>` setzen.
 EINSTELLBAR = {
@@ -32,11 +37,17 @@ EINSTELLBAR = {
     "git_name": "Git-Name für Commits in Auftrags-Repos (leer: globale Git-Einstellung)",
     "git_email": "Git-E-Mail für Commits in Auftrags-Repos (leer: globale Git-Einstellung)",
     "autor": "Name, den Arbeiter eintragen, wenn ein Autor nötig ist (leer: keinen eintragen)",
+    "update_hinweis": "Hinweis auf neue Versionen: an (Standard) oder aus",
 }
+# Rückfall für `fabrik update`, falls halle/update.py nicht geladen werden kann (Schlüssel wie update.stand).
+UPDATE_RUECKFALL = {"installiert": None, "neueste": None, "update_verfuegbar": False,
+                    "befehl": "", "hinweis": "", "abgeschaltet": False}
+# Einstellungen mit fester Auswahl und ihr Standardwert.
+AUSWAHL = {"update_hinweis": (("an", "aus"), "an")}
 
-ROLLEN = ["spec", "builder", "sicherheit", "designer", "inspector", "bediener", "approver"]
-# Nur Prüfer lassen sich abschalten; Spec, Builder und Approver braucht jeder Auftrag.
-SCHALTBAR = ["sicherheit", "designer", "inspector", "bediener"]
+# Rollen und abschaltbare Prüfer stehen nur in halle/arbeiter.py.
+ROLLEN = arbeiter.ROLLEN
+SCHALTBAR = arbeiter.SCHALTBAR
 STATIONEN = ["eingang", "spec", "bau", "pruefung", "freigabe", "fertig"]
 STATUS = ["aktiv", "pausiert", "eskaliert", "fertig", "abgebrochen"]
 ID_MUSTER = re.compile(r"^F-\d{4}$")
@@ -62,20 +73,32 @@ __pycache__/
 """
 
 
+def arbeiter_modul():
+    """Gemeinsames Modul mit der Halle: Arbeiter-Einstellungen, Sperre und Lesen/Schreiben von einstellungen.json."""
+    return arbeiter
+
+
 def lies_einstellungen():
-    try:
-        d = json.loads(EINSTELLUNGEN.read_text())
-    except (OSError, json.JSONDecodeError):
-        d = {}
-    d["deaktiviert"] = [r for r in d.get("deaktiviert", []) if r in SCHALTBAR]
-    return d
+    """Liest einstellungen.json so, wie sie ist. Fehlt sie oder ist sie beschädigt, gilt sie als leer.
+    Abgeschaltete Prüfer liefert `arbeiter.deaktivierte(d)`; dabei wird nichts ergänzt."""
+    return arbeiter._lies_alles(DATEN)
+
+
+@contextmanager
+def einstellungen_aendern():
+    """Liest die Einstellungen unter der gemeinsamen Sperre (wie Halle und `fabrik arbeiter`),
+    übergibt sie zum Ändern und speichert sie danach unter derselben Sperre."""
+    with arbeiter._sperre(DATEN):
+        d = lies_einstellungen()
+        yield d
+        arbeiter._schreibe_alles(DATEN, d)
 
 
 def lager_ermitteln():
     if os.environ.get("FABRIK_LAGER"):
         return Path(os.environ["FABRIK_LAGER"]).expanduser()
     eintrag = lies_einstellungen().get("lager")
-    return Path(eintrag).expanduser() if eintrag else LAGER_STANDARD
+    return Path(eintrag).expanduser() if isinstance(eintrag, str) and eintrag.strip() else LAGER_STANDARD
 
 
 LAGER = lager_ermitteln()
@@ -149,16 +172,9 @@ def wert(text):
 
 # --- Befehle -----------------------------------------------------------------
 
-def schreibe_einstellungen(d):
-    DATEN.mkdir(parents=True, exist_ok=True)
-    tmp = EINSTELLUNGEN.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-    os.replace(tmp, EINSTELLUNGEN)
-
-
 def cmd_rollen(a):
     """Zeigt, welche Prüfer aktiv und welche abgeschaltet sind (JSON)."""
-    aus = lies_einstellungen()["deaktiviert"]
+    aus = arbeiter.deaktivierte(lies_einstellungen())
     print(json.dumps({"aktiv": [r for r in SCHALTBAR if r not in aus], "deaktiviert": aus}, ensure_ascii=False))
 
 
@@ -166,12 +182,11 @@ def cmd_rolle(a):
     """Schaltet einen Prüfer an oder aus."""
     if a.rolle not in SCHALTBAR:
         fehler(f"Nur diese Prüfer lassen sich schalten: {', '.join(SCHALTBAR)}")
-    d = lies_einstellungen()
-    aus = [r for r in d["deaktiviert"] if r != a.rolle]
-    if a.zustand == "aus":
-        aus.append(a.rolle)
-    d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
-    schreibe_einstellungen(d)
+    with einstellungen_aendern() as d:
+        aus = [r for r in arbeiter.deaktivierte(d) if r != a.rolle]
+        if a.zustand == "aus":
+            aus.append(a.rolle)
+        d["deaktiviert"] = [r for r in SCHALTBAR if r in aus]
     print(f"{a.rolle}: {a.zustand}")
 
 
@@ -179,33 +194,55 @@ def cmd_einstellung(a):
     """Zeigt die Einstellungen (JSON) oder setzt eine davon."""
     d = lies_einstellungen()
     if not a.name:
-        stand = {k: d.get(k, "") for k in EINSTELLBAR}
+        stand = {k: d.get(k, AUSWAHL[k][1] if k in AUSWAHL else "") for k in EINSTELLBAR}
         stand["lager"] = str(LAGER)
         stand["eingerichtet"] = bool(d.get("eingerichtet"))
-        stand["deaktiviert"] = d["deaktiviert"]
+        stand["deaktiviert"] = arbeiter.deaktivierte(d)
         stand["daten"] = str(DATEN)
         stand["autostart"] = AUTOSTART_PLIST.exists()
         print(json.dumps(stand, ensure_ascii=False, indent=2))
         return
     if a.name == "eingerichtet":
-        d["eingerichtet"] = True
-        schreibe_einstellungen(d)
+        with einstellungen_aendern() as d:
+            d["eingerichtet"] = True
         print("eingerichtet")
         return
     if a.name not in EINSTELLBAR:
         fehler(f"Unbekannte Einstellung '{a.name}'. Möglich: {', '.join(EINSTELLBAR)}, eingerichtet")
     if a.wert is None:
-        print(d.get(a.name, "") if a.name != "lager" else LAGER)
+        standard = AUSWAHL[a.name][1] if a.name in AUSWAHL else ""
+        print(d.get(a.name, standard) if a.name != "lager" else LAGER)
         return
     wert_neu = a.wert.strip()
+    if a.name in AUSWAHL:
+        werte, standard = AUSWAHL[a.name]
+        wert_neu = wert_neu.lower() or standard
+        if wert_neu not in werte:
+            fehler(f"{a.name} muss {' oder '.join(werte)} sein")
     if a.name == "lager" and wert_neu:
         wert_neu = str(Path(wert_neu).expanduser().resolve())
-    if wert_neu:
-        d[a.name] = wert_neu
-    else:
-        d.pop(a.name, None)
-    schreibe_einstellungen(d)
+    with einstellungen_aendern() as d:
+        if wert_neu:
+            d[a.name] = wert_neu
+        else:
+            d.pop(a.name, None)
     print(f"{a.name}: {wert_neu or '(leer)'}")
+
+
+def cmd_update(a):
+    """Zeigt installierte und neueste Version (JSON). Fragt höchstens alle 6 Stunden bei GitHub nach."""
+    try:
+        import update
+    except Exception:  # noqa: BLE001 - der Hinweis darf `/fabrik` nie aufhalten
+        update = None
+    try:
+        stand = update.stand(DATEN)
+    except Exception:  # noqa: BLE001
+        stand = None
+    if not isinstance(stand, dict):
+        # Gleiches Schema wie update.stand, auch wenn das Modul fehlt oder scheitert.
+        stand = update.leerer_stand() if update else UPDATE_RUECKFALL
+    print(json.dumps(stand, ensure_ascii=False))
 
 
 def cmd_neu(a):
@@ -238,7 +275,9 @@ def cmd_neu(a):
         "aktualisiert": jetzt(),
     }
     schreibe_json(pfad / ".fabrik" / "status.json", status)
-    (pfad / ".fabrik" / "todos.md").write_text("# Todos\n")
+    (pfad / "todos.md").write_text("# Todos\n")
+    (pfad / "roadmap.md").write_text("# Roadmap\n")
+    (pfad / "changelog.md").write_text("# Changelog\n\nWas in welcher Version hinzugefügt, geändert, behoben oder entfernt wurde. Neueste Version oben.\n")
     (pfad / ".fabrik" / "backlog.md").write_text("# Backlog\n")
     (pfad / ".gitignore").write_text(GITIGNORE)
     git(pfad, "init", "-q", "-b", "main")
@@ -267,7 +306,47 @@ def cmd_runde(a):
     ereignis(pfad, "runde", f"Runde {a.runde} beginnt")
 
 
+def zeige_arbeiter(rolle, st):
+    am = arbeiter_modul()
+    modell = am.MODELL_NAMEN.get(st["gilt_modell"], st["gilt_modell"] or "wie die Sitzung")
+    effort = am.EFFORT_NAMEN.get(st["gilt_effort"], st["gilt_effort"]) if st["gilt_effort"] else "Standard"
+    herkunft = lambda eigen: "eigene Wahl" if eigen else "Standard"
+    print(f"{rolle}: Modell {modell} ({herkunft(st['modell'])}), Effort {effort} ({herkunft(st['effort'])})")
+
+
 def cmd_arbeiter(a):
+    """`arbeiter <ID> <rolle> start|ende` meldet Arbeiter; `arbeiter <rolle> [modell|effort <wert>]` stellt sie ein."""
+    t = a.teile
+    if ID_MUSTER.match(t[0]):
+        if len(t) != 3 or t[2] not in ("start", "ende"):
+            fehler("Aufruf: fabrik arbeiter <ID> <rolle> start|ende")
+        a.id, a.rolle, a.aktion = t
+        return arbeiter_melden(a)
+    am = arbeiter_modul()
+    rolle = t[0]
+    if rolle not in ROLLEN:
+        fehler(f"Rolle muss eine von {', '.join(ROLLEN)} sein (oder zuerst eine Auftrags-ID wie F-0001)")
+    if len(t) == 1:
+        return zeige_arbeiter(rolle, am.stand(DATEN)[rolle])
+    if len(t) != 3 or t[1] not in am.FELDER:
+        fehler(f"Aufruf: fabrik arbeiter <rolle> modell <{'|'.join(am.MODELLE)}|standard> "
+               f"oder fabrik arbeiter <rolle> effort <{'|'.join(am.EFFORTS)}|standard>")
+    try:
+        st = am.setze(DATEN, rolle, t[1], t[2])
+    except am.Ungueltig as e:
+        fehler(str(e))
+    except OSError as e:
+        fehler(f"Einstellung konnte nicht gespeichert werden: {e}")
+    zeige_arbeiter(rolle, st)
+
+
+def cmd_modelle(a):
+    """Modell und Effort je Arbeiter (JSON). `aufruf` enthält nur die Parameter, die der Orchestrator mitgibt."""
+    am = arbeiter_modul()
+    print(json.dumps({"aufruf": am.aufruf(DATEN), "stand": am.stand(DATEN), **am.auswahl()}, ensure_ascii=False))
+
+
+def arbeiter_melden(a):
     if a.rolle not in ROLLEN:
         fehler(f"Rolle muss eine von {ROLLEN} sein")
     with auftrag(a.id) as (s, pfad):
@@ -371,6 +450,21 @@ def cmd_fertig(a):
     ereignis(pfad, "fertig", "Vom Menschen freigegeben" if a.mensch else "Freigegeben", None if a.mensch else "approver")
 
 
+def sichere_changelog(pfad, version, nachricht):
+    """Trägt die Version in changelog.md ein, falls der Approver sie nicht schon ausführlich geschrieben hat."""
+    datei = pfad / "changelog.md"
+    text = datei.read_text() if datei.exists() else "# Changelog\n"
+    if f"## Version {version} " in text:
+        return
+    eintrag = f"## Version {version} – {datetime.now():%Y-%m-%d}\n\n- {nachricht}\n\n"
+    stelle = text.find("\n## ")
+    if stelle == -1:
+        text = text.rstrip("\n") + "\n\n" + eintrag
+    else:
+        text = text[: stelle + 1] + eintrag + text[stelle + 1 :]
+    datei.write_text(text)
+
+
 def cmd_commit(a):
     with auftrag(a.id) as (s, pfad):
         if s["status"] != "fertig":
@@ -381,6 +475,8 @@ def cmd_commit(a):
             return
         s["version"] += 1
         nachricht = a.nachricht or f"{s['id']}: {s['titel']} (Version {s['version']})"
+        sichere_changelog(pfad, s["version"], nachricht)
+        git(pfad, "add", "-A")
         r = git(pfad, "commit", "-q", "-m", nachricht)
         if r.returncode:
             s["version"] -= 1
@@ -397,11 +493,13 @@ def cmd_neue_version(a):
         fab = pfad / ".fabrik"
         archiv = fab / "archiv" / f"v{s['version']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         archiv.mkdir(parents=True)
-        for name in ("befunde", "todos.md", "freigabe.md"):
+        for name in ("befunde", "freigabe.md"):
             if (fab / name).exists():
                 os.replace(fab / name, archiv / name)
+        if (pfad / "todos.md").exists():
+            os.replace(pfad / "todos.md", archiv / "todos.md")
         (fab / "befunde").mkdir()
-        (fab / "todos.md").write_text("# Todos\n")
+        (pfad / "todos.md").write_text("# Todos\n")
         s.update(status="aktiv", station="bau", runde=0, befunde={}, eskalation=None, aktive_arbeiter=[])
         for k in s["kriterien"]:
             k["erfuellt"] = None
@@ -622,9 +720,13 @@ def main():
     x = u.add_parser("runde", help="Prüfrunde setzen")
     x.add_argument("id"); x.add_argument("runde", type=int); x.set_defaults(f=cmd_runde)
 
-    x = u.add_parser("arbeiter", help="Arbeiter beginnt/endet")
-    x.add_argument("id"); x.add_argument("rolle"); x.add_argument("aktion", choices=["start", "ende"])
-    x.set_defaults(f=cmd_arbeiter)
+    x = u.add_parser("arbeiter", help="Arbeiter beginnt/endet oder Modell und Effort eines Arbeiters einstellen",
+                     usage="fabrik arbeiter <ID> <rolle> start|ende\n"
+                           "       fabrik arbeiter <rolle> [modell <fable|opus|sonnet|haiku|standard>]\n"
+                           "       fabrik arbeiter <rolle> [effort <low|medium|high|xhigh|max|standard>]")
+    x.add_argument("teile", nargs="+", metavar="…"); x.set_defaults(f=cmd_arbeiter)
+
+    x = u.add_parser("modelle", help="Modell und Effort aller Arbeiter (JSON)"); x.set_defaults(f=cmd_modelle)
 
     x = u.add_parser("setze", help="Felder setzen: feld=wert")
     x.add_argument("id"); x.add_argument("paare", nargs="+"); x.set_defaults(f=cmd_setze)
@@ -667,6 +769,9 @@ def main():
 
     x = u.add_parser("einstellung", help="Einstellungen zeigen oder setzen")
     x.add_argument("name", nargs="?"); x.add_argument("wert", nargs="?"); x.set_defaults(f=cmd_einstellung)
+
+    x = u.add_parser("update", help="Nach einer neuen Version des Plugins sehen (JSON)")
+    x.set_defaults(f=cmd_update)
 
     x = u.add_parser("rollen", help="Aktive und abgeschaltete Prüfer (JSON)"); x.set_defaults(f=cmd_rollen)
 
